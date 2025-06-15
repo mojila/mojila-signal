@@ -1,0 +1,252 @@
+# Mojila Signal - RSI Stock Market Signal Generator
+
+A Python-based stock market signal generator that provides buy/sell recommendations for US stocks using RSI (Relative Strength Index) technical indicators.
+
+## Features
+
+- **RSI-based Signal Generation**: Uses 14-period RSI with customizable thresholds
+- **Buy Signal**: RSI ≤ 30 (Oversold condition)
+- **Sell Signal**: RSI ≥ 70 (Overbought condition) OR upcoming calendar events
+- **Calendar Event Detection**: Automatic SELL signal when ex-dividend or earnings date is tomorrow
+- **Hold Signal**: RSI between 30-70 (Neutral zone)
+- **Multiple Stock Analysis**: Analyze multiple stocks simultaneously
+- **Configurable Parameters**: Customize RSI period and thresholds
+- **Error Handling**: Robust error handling with retry mechanisms
+- **Signal Strength Indicators**: Strong signals for extreme RSI values (≤20 or ≥80)
+
+## Signal Logic
+
+The signal generator uses the following logic:
+
+- **BUY**: When RSI ≤ 30 (stock is oversold)
+- **SELL**: When RSI ≥ 70 (stock is overbought) OR when ex-dividend date or earnings report date is tomorrow
+- **HOLD**: When RSI is between 30 and 70 (neutral zone) and no calendar events
+- **STRONG**: Additional indicator when RSI ≤ 20 or RSI ≥ 80
+
+### Calendar Events
+
+The system automatically checks for upcoming calendar events and triggers SELL signals when:
+- **Ex-dividend date** is tomorrow (stock typically drops by dividend amount on ex-date)
+- **Earnings report date** is tomorrow (increased volatility expected)
+
+This feature helps traders avoid potential price drops or volatility around these events.
+
+## Installation
+
+1. Clone or download this repository
+2. Install required dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Usage
+
+### Basic Usage
+
+Run the main script to analyze popular US stocks:
+
+```bash
+python main.py
+```
+
+### Custom Portfolio
+
+You can create a `my_portfolio.txt` file in the project directory to analyze your own stocks instead of the default list:
+
+```bash
+# Create your portfolio file
+echo "AAPL" > my_portfolio.txt
+echo "MSFT" >> my_portfolio.txt
+echo "TSLA" >> my_portfolio.txt
+```
+
+The file format supports:
+- One stock symbol per line
+- Comments (lines starting with #)
+- Empty lines (ignored)
+- Case-insensitive symbols (automatically converted to uppercase)
+
+Example `my_portfolio.txt`:
+```
+# My Personal Portfolio
+AAPL
+MSFT
+TSLA
+# Technology stocks
+NVDA
+GOOGL
+```
+
+If `my_portfolio.txt` exists, the application will use it automatically. If the file doesn't exist or is empty, it will fall back to the default stock list.
+
+### Telegram Notifications
+
+You can enable Telegram notifications to receive stock signals directly in your Telegram chat. Create a `telegram_config.json` file in the project directory:
+
+```json
+{
+    "api_key": "YOUR_BOT_TOKEN",
+    "user_ids": ["YOUR_TELEGRAM_USER_ID"]
+}
+```
+
+**Setup Instructions:**
+
+1. **Create a Telegram Bot:**
+   - Message @BotFather on Telegram
+   - Send `/newbot` and follow the instructions
+   - Copy the bot token (api_key)
+
+2. **Get Your User ID:**
+   - Message @userinfobot on Telegram
+   - Copy your user ID
+
+3. **Start the Bot:**
+   - Find your bot on Telegram and send `/start`
+   - This allows the bot to send you messages
+
+4. **Configure the Application:**
+   - Create `telegram_config.json` with your bot token and user ID
+   - Run the application - it will automatically send notifications if configured
+
+Example notification message:
+```
+🔔 Stock Signal Alert
+
+📊 Current Signals:
+AAPL   🟡HOLD  45.2  $150.25
+TSLA   🟢BUY   28.5  $195.75
+MSFT   🔴SELL  72.1  $380.50
+
+🟢 Buy Signals: TSLA (RSI: 28.5)
+🔴 Sell Signals: MSFT (RSI: 72.1)
+```
+
+If `telegram_config.json` doesn't exist, the application will run normally without sending notifications.
+
+This will analyze the following stocks by default:
+- AAPL (Apple)
+- MSFT (Microsoft)
+- GOOGL (Google)
+- AMZN (Amazon)
+- TSLA (Tesla)
+- NVDA (NVIDIA)
+- META (Meta)
+- NFLX (Netflix)
+
+### Custom Usage
+
+```python
+from main import RSISignalGenerator
+
+# Initialize with custom parameters
+signal_generator = RSISignalGenerator(
+    rsi_period=21,  # Use 21-day RSI instead of default 14
+    oversold_threshold=25,  # More conservative buy threshold
+    overbought_threshold=75,  # More conservative sell threshold
+    check_calendar_events=True  # Enable calendar event checking (default)
+)
+
+# Analyze a single stock
+result = signal_generator.generate_signals('AAPL', period='6mo')
+print(f"Current signal for AAPL: {result['currentSignal']}")
+
+# Analyze multiple stocks
+stocks = ['AAPL', 'MSFT', 'GOOGL']
+results = signal_generator.analyze_multiple_stocks(stocks)
+```
+
+### Available Time Periods
+
+- `1d` - 1 day
+- `5d` - 5 days
+- `1mo` - 1 month
+- `3mo` - 3 months
+- `6mo` - 6 months
+- `1y` - 1 year (default)
+- `2y` - 2 years
+- `5y` - 5 years
+- `10y` - 10 years
+- `ytd` - Year to date
+- `max` - Maximum available data
+
+## Output Format
+
+The signal generator returns a dictionary with the following information:
+
+```python
+{
+    "symbol": "AAPL",
+    "currentPrice": 150.25,
+    "currentRSI": 45.67,
+    "currentSignal": "HOLD",
+    "signalStrength": "NORMAL",
+    "recentBuySignals": 2,
+    "recentSellSignals": 1,
+    "calendarEvents": {
+        "ex_date_tomorrow": false,
+        "earnings_tomorrow": false
+    },
+    "calendarReasons": [],
+    "lastUpdated": "2024-01-15 10:30:00",
+    "data": [...] # Last 10 days of OHLCV + RSI data
+}
+```
+
+## Example Output
+
+```
+============================================================
+MOJILA SIGNAL - RSI Stock Market Signal Generator
+============================================================
+RSI Oversold Threshold: 30
+RSI Overbought Threshold: 70
+============================================================
+
+CURRENT SIGNALS:
+--------------------------------------------------------------------------------
+Symbol   Price      RSI      Signal   Strength   Buy/30d  Sell/30d Calendar
+AAPL     $150.25    45.2     HOLD     NORMAL     2        1        -
+MSFT     $380.50    72.1     SELL     NORMAL     0        3        -
+TSLA     $195.75    28.5     BUY      NORMAL     4        0        -
+JNJ      $165.30    68.9     SELL     NORMAL     1        2        Ex-dividend date tomorrow
+GOOGL    $140.80    28.9     BUY      NORMAL     4        0        -
+AMZN     $155.20    55.4     HOLD     NORMAL     1        2        -
+NVDA     $520.30    42.8     HOLD     NORMAL     3        1        -
+META     $350.75    31.2     HOLD     NORMAL     2        0        -
+NFLX     $480.90    68.5     HOLD     NORMAL     0        2        -       
+--------------------------------------------------------------------------------
+
+Legend:
+BUY  - RSI <= 30 (Oversold, potential buying opportunity)
+SELL - RSI >= 70 (Overbought, potential selling opportunity)
+HOLD - RSI between 30-70 (Neutral zone)
+Buy/30d, Sell/30d - Number of signals in the last 30 days
+```
+
+## Dependencies
+
+- **yfinance**: Yahoo Finance API for stock data
+- **pandas**: Data manipulation and analysis
+- **numpy**: Numerical computing
+
+## Disclaimer
+
+⚠️ **Important**: This tool is for educational and informational purposes only. It should not be considered as financial advice. Always do your own research and consult with financial professionals before making investment decisions. Past performance does not guarantee future results.
+
+## RSI Technical Indicator
+
+The Relative Strength Index (RSI) is a momentum oscillator that measures the speed and change of price movements. It oscillates between 0 and 100 and is typically used to identify overbought or oversold conditions in a stock.
+
+- **RSI > 70**: Generally considered overbought (potential sell signal)
+- **RSI < 30**: Generally considered oversold (potential buy signal)
+- **RSI 30-70**: Neutral zone
+
+## License
+
+This project is open source and available under the MIT License.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.

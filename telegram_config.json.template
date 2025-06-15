@@ -1,0 +1,4 @@
+{
+    "api_key": "YOUR_BOT_TOKEN_HERE",
+    "user_ids": ["YOUR_TELEGRAM_USER_ID_HERE"]
+}
