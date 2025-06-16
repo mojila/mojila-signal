@@ -552,8 +552,6 @@ def format_telegram_message(results: List[Dict]) -> List[str]:
             if len(buy_text + test_chunk) > 500:  # Reasonable line length
                 buy_chunks.append(current_chunk.rstrip(", "))
                 current_chunk = signal
-            else:
-                current_chunk = test_chunk + ", " if current_chunk else signal
         if current_chunk:
             buy_chunks.append(current_chunk.rstrip(", "))
         
@@ -574,8 +572,6 @@ def format_telegram_message(results: List[Dict]) -> List[str]:
             if len(sell_text + test_chunk) > 500:  # Reasonable line length
                 sell_chunks.append(current_chunk.rstrip(", "))
                 current_chunk = signal
-            else:
-                current_chunk = test_chunk + ", " if current_chunk else signal
         if current_chunk:
             sell_chunks.append(current_chunk.rstrip(", "))
         
