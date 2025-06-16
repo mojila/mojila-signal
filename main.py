@@ -553,9 +553,9 @@ def format_telegram_message(results: List[Dict]) -> List[str]:
                 buy_chunks.append(current_chunk.rstrip(", "))
                 current_chunk = signal
             else:
-                current_chunk = test_chunk + ", " if current_chunk else signal
+                current_chunk = test_chunk
         if current_chunk:
-            buy_chunks.append(current_chunk)
+            buy_chunks.append(current_chunk.rstrip(", "))
         
         for i, chunk in enumerate(buy_chunks):
             if i == 0:
@@ -575,9 +575,9 @@ def format_telegram_message(results: List[Dict]) -> List[str]:
                 sell_chunks.append(current_chunk.rstrip(", "))
                 current_chunk = signal
             else:
-                current_chunk = test_chunk + ", " if current_chunk else signal
+                current_chunk = test_chunk
         if current_chunk:
-            sell_chunks.append(current_chunk)
+            sell_chunks.append(current_chunk.rstrip(", "))
         
         for i, chunk in enumerate(sell_chunks):
             if i == 0:
