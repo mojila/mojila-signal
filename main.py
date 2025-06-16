@@ -278,7 +278,7 @@ def load_portfolio_stocks() -> List[str]:
     if os.path.exists(portfolio_file):
         try:
             with open(portfolio_file, 'r') as file:
-                stocks = [line.strip().upper() for line in file if line.strip()]
+                stocks = [line.strip().upper() for line in file if line.strip() and not line.strip().startswith('#')]
             print(f"📁 Loaded {len(stocks)} stocks from {portfolio_file}")
             return stocks
         except Exception as e:
@@ -306,7 +306,7 @@ def load_scan_list(exclude_stocks: List[str] = None) -> List[str]:
     if os.path.exists(scan_file):
         try:
             with open(scan_file, 'r') as file:
-                all_stocks = [line.strip().upper() for line in file if line.strip()]
+                all_stocks = [line.strip().upper() for line in file if line.strip() and not line.strip().startswith('#')]
             
             # Filter out stocks that are already in portfolio
             filtered_stocks = [stock for stock in all_stocks if stock not in exclude_stocks]
