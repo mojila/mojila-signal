@@ -52,33 +52,71 @@ python main.py
 
 ### Custom Portfolio
 
-You can create a `my_portfolio.txt` file in the project directory to analyze your own stocks instead of the default list:
+You can create a `my_portfolio.txt` file to specify which stocks to analyze instead of using the default list.
 
-```bash
-# Create your portfolio file
-echo "AAPL" > my_portfolio.txt
-echo "MSFT" >> my_portfolio.txt
-echo "TSLA" >> my_portfolio.txt
+### Creating Your Portfolio File
+
+1. Create a file named `my_portfolio.txt` in the project root directory
+2. Add one stock symbol per line
+3. Use uppercase symbols (e.g., AAPL, MSFT, GOOGL)
+4. Empty lines and comments (lines starting with #) are ignored
+
+### Example `my_portfolio.txt`:
 ```
-
-The file format supports:
-- One stock symbol per line
-- Comments (lines starting with #)
-- Empty lines (ignored)
-- Case-insensitive symbols (automatically converted to uppercase)
-
-Example `my_portfolio.txt`:
-```
-# My Personal Portfolio
 AAPL
 MSFT
-TSLA
-# Technology stocks
-NVDA
 GOOGL
+AMZN
+TSLA
+NVDA
+META
+# Technology stocks focus
+CRM
+ADOBE
+NFLX
 ```
 
-If `my_portfolio.txt` exists, the application will use it automatically. If the file doesn't exist or is empty, it will fall back to the default stock list.
+### How It Works
+
+- If `my_portfolio.txt` exists, the application will load stocks from this file
+- If the file doesn't exist or is empty, it falls back to the default stock list from `config.py`
+- The application will display which source it's using when you run it
+- Supports flexible formatting (handles extra whitespace, case-insensitive)
+- Provides clear feedback on the number of stocks loaded and the source
+
+## Market Scan
+
+The application can also perform market-wide scans using a separate stock list for broader signal detection.
+
+### Creating Your Scan List
+
+1. Create a file named `scan_list.txt` in the project root directory
+2. Add one stock symbol per line (typically top market cap stocks)
+3. Use uppercase symbols
+
+### Example `scan_list.txt`:
+```
+AAPL
+MSFT
+GOOGL
+AMZN
+NVDA
+TSLA
+META
+BRK.B
+TSM
+UNH
+# ... more stocks
+```
+
+### How Market Scan Works
+
+- Runs automatically after portfolio analysis
+- Analyzes all stocks in `scan_list.txt`
+- **Telegram notifications only sent for BUY/SELL signals** (HOLD signals are filtered out)
+- Separate notification message from portfolio alerts
+- Provides summary of signals found
+- Skips scan if `scan_list.txt` doesn't exist
 
 ### Telegram Notifications
 

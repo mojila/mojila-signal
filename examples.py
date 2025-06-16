@@ -234,57 +234,182 @@ def example_calendar_events():
 
 def example_telegram_notifications():
     """
-    Example demonstrating Telegram notification functionality.
+    Example of how Telegram notifications work.
+    
+    This function demonstrates the Telegram notification feature by:
+    1. Checking if telegram_config.json exists
+    2. Loading sample stock data
+    3. Showing what the notification message would look like
     """
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 50)
     print("EXAMPLE: Telegram Notifications")
-    print("=" * 80)
+    print("=" * 50)
     
     # Import required functions from main module
-    from main import load_telegram_config, format_telegram_message, send_telegram_notifications
+    from main import load_telegram_config, format_telegram_message, format_scan_telegram_message
     
     # Check if Telegram is configured
     telegram_config = load_telegram_config()
     
     if telegram_config:
         print("✅ Telegram configuration found!")
-        print(f"📱 Bot configured for {len(telegram_config['user_ids'])} users")
+        print(f"📱 Bot configured for {len(telegram_config['user_ids'])} user(s)")
         
-        # Create signal generator and analyze a few stocks
-        signal_generator = RSISignalGenerator()
-        test_stocks = ['AAPL', 'MSFT', 'TSLA']
+        # Create sample results to show message format
+        sample_results = [
+            {
+                'symbol': 'AAPL',
+                'currentSignal': 'BUY',
+                'currentRSI': 28.5,
+                'currentPrice': 175.43,
+                'calendarReasons': []
+            },
+            {
+                'symbol': 'MSFT',
+                'currentSignal': 'SELL',
+                'currentRSI': 78.9,
+                'currentPrice': 325.31,
+                'calendarReasons': []
+            },
+            {
+                'symbol': 'TSLA',
+                'currentSignal': 'HOLD',
+                'currentRSI': 45.7,
+                'currentPrice': 325.31,
+                'calendarReasons': []
+            }
+        ]
         
-        print(f"\nAnalyzing {len(test_stocks)} stocks for Telegram notification demo...")
-        results = signal_generator.analyze_multiple_stocks(test_stocks)
-        
-        # Show what the Telegram message would look like
-        message = format_telegram_message(results)
-        print("\nTelegram Message Preview:")
+        print("\n📱 Sample portfolio notification message:")
         print("-" * 50)
-        # Convert markdown to plain text for console display
-        preview = message.replace('*', '').replace('`', '').replace('\n', '\n')
-        print(preview)
+        message = format_telegram_message(sample_results)
+        print(message)
         print("-" * 50)
         
-        # Optionally send the actual notification (commented out for demo)
-        # print("\nSending Telegram notification...")
-        # send_telegram_notifications(results)
+        # Show scan notification example
+        scan_sample_results = [
+            {
+                'symbol': 'NVDA',
+                'currentSignal': 'BUY',
+                'currentRSI': 25.2,
+                'currentPrice': 425.67,
+                'calendarReasons': []
+            },
+            {
+                'symbol': 'GOOGL',
+                'currentSignal': 'SELL',
+                'currentRSI': 72.8,
+                'currentPrice': 142.15,
+                'calendarReasons': ['Ex-Dividend']
+            }
+        ]
+        
+        print("\n🔍 Sample market scan notification message:")
+        print("-" * 50)
+        scan_message = format_scan_telegram_message(scan_sample_results)
+        if scan_message:
+            print(scan_message)
+        else:
+            print("No buy/sell signals found")
+        print("-" * 50)
         
     else:
         print("❌ Telegram not configured")
-        print("\nTo enable Telegram notifications:")
-        print("1. Create a telegram_config.json file")
-        print("2. Add your bot token and user IDs")
-        print("3. See README.md for detailed setup instructions")
+        print("\n📋 To set up Telegram notifications:")
+        print("1. Create a Telegram bot via @BotFather")
+        print("2. Get your user ID from @userinfobot")
+        print("3. Copy telegram_config.json.template to telegram_config.json")
+        print("4. Fill in your bot token and user ID")
         
-        # Show template
-        print("\nTemplate telegram_config.json:")
-        print("{")
-        print('    "api_key": "YOUR_BOT_TOKEN",')
-        print('    "user_ids": ["YOUR_USER_ID"]')
-        print("}")
-    
     print("\nNote: Telegram notifications are sent automatically when you run main.py")
+
+
+def example_market_scan():
+    """
+    Example of how market scan functionality works.
+    
+    This function demonstrates the market scan feature by:
+    1. Checking if scan_list.txt exists
+    2. Loading scan stocks
+    3. Showing how scan results are filtered for buy/sell signals only
+    """
+    print("\n" + "=" * 50)
+    print("EXAMPLE: Market Scan")
+    print("=" * 50)
+    
+    # Import required functions from main module
+    from main import load_scan_list, format_scan_telegram_message, load_portfolio_stocks
+    
+    # Load portfolio stocks to demonstrate filtering
+    portfolio_stocks = load_portfolio_stocks()
+    print(f"📁 Portfolio contains {len(portfolio_stocks)} stocks: {', '.join(portfolio_stocks[:5])}{'...' if len(portfolio_stocks) > 5 else ''}")
+    
+    # Check if scan list exists and load with portfolio exclusion
+    scan_stocks = load_scan_list(exclude_stocks=portfolio_stocks)
+    
+    if scan_stocks:
+        print(f"✅ Scan list found with {len(scan_stocks)} stocks")
+        print(f"📊 First 10 stocks: {', '.join(scan_stocks[:10])}")
+        
+        # Create sample scan results to show filtering
+        sample_scan_results = [
+            {
+                'symbol': 'AAPL',
+                'currentSignal': 'BUY',
+                'currentRSI': 28.5,
+                'currentPrice': 175.43,
+                'calendarReasons': []
+            },
+            {
+                'symbol': 'MSFT',
+                'currentSignal': 'HOLD',
+                'currentRSI': 45.2,
+                'currentPrice': 325.31,
+                'calendarReasons': []
+            },
+            {
+                'symbol': 'GOOGL',
+                'currentSignal': 'SELL',
+                'currentRSI': 72.8,
+                'currentPrice': 142.15,
+                'calendarReasons': ['Ex-Dividend']
+            },
+            {
+                'symbol': 'TSLA',
+                'currentSignal': 'HOLD',
+                'currentRSI': 55.7,
+                'currentPrice': 245.67,
+                'calendarReasons': []
+            }
+        ]
+        
+        print("\n🔍 Sample scan results (showing filtering):")
+        print("All signals found: BUY (AAPL), HOLD (MSFT), SELL (GOOGL), HOLD (TSLA)")
+        print("Filtered for Telegram: Only BUY and SELL signals")
+        
+        print("\n📱 Filtered scan notification message:")
+        print("-" * 50)
+        scan_message = format_scan_telegram_message(sample_scan_results)
+        if scan_message:
+            print(scan_message)
+        else:
+            print("No buy/sell signals found")
+        print("-" * 50)
+        
+    else:
+        print("❌ Scan list not found")
+        print("\n📋 To enable market scanning:")
+        print("1. Create scan_list.txt file")
+        print("2. Add stock symbols (one per line)")
+        print("3. Run main.py to scan for signals")
+        
+        print("\n📄 scan_list.txt should contain:")
+        print("AAPL")
+        print("MSFT")
+        print("GOOGL")
+        print("...")
+    
+    print("\nNote: Market scan runs automatically after portfolio analysis in main.py")
 
 
 def main():
@@ -306,6 +431,7 @@ def main():
         example_historical_data_analysis()
         example_calendar_events()
         example_telegram_notifications()
+        example_market_scan()
         
         print("=" * 80)
         print("All examples completed successfully!")

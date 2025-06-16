@@ -268,7 +268,7 @@ class RSISignalGenerator:
 
 def load_portfolio_stocks() -> List[str]:
     """
-    Load stock symbols from my_portfolio.txt if it exists, otherwise use DEFAULT_STOCKS.
+    Load stock symbols from my_portfolio.txt if it exists, otherwise use default stocks.
     
     Returns:
         List[str]: List of stock symbols to analyze
@@ -278,27 +278,52 @@ def load_portfolio_stocks() -> List[str]:
     if os.path.exists(portfolio_file):
         try:
             with open(portfolio_file, 'r') as file:
-                stocks = []
-                for line in file:
-                    # Remove whitespace and convert to uppercase
-                    symbol = line.strip().upper()
-                    # Skip empty lines and comments (lines starting with #)
-                    if symbol and not symbol.startswith('#'):
-                        stocks.append(symbol)
-                
-                if stocks:
-                    print(f"📁 Loaded {len(stocks)} stocks from {portfolio_file}")
-                    return stocks
-                else:
-                    print(f"⚠️  {portfolio_file} is empty, using default stocks")
-                    return config.DEFAULT_STOCKS
+                stocks = [line.strip().upper() for line in file if line.strip()]
+            print(f"📁 Loaded {len(stocks)} stocks from {portfolio_file}")
+            return stocks
         except Exception as e:
-            print(f"⚠️  Error reading {portfolio_file}: {e}")
-            print("Using default stocks instead")
+            print(f"❌ Error reading {portfolio_file}: {e}")
+            print(f"📁 Using default stocks instead")
             return config.DEFAULT_STOCKS
     else:
-        print(f"📋 {portfolio_file} not found, using default stocks")
+        print(f"📁 {portfolio_file} not found, using default stocks")
         return config.DEFAULT_STOCKS
+
+
+def load_scan_list(exclude_stocks: List[str] = None) -> List[str]:
+    """
+    Load stock symbols from scan_list.txt for market scanning.
+    
+    Args:
+        exclude_stocks (List[str], optional): List of stock symbols to exclude from scan
+    
+    Returns:
+        List[str]: List of stock symbols to scan, empty list if file doesn't exist
+    """
+    scan_file = "scan_list.txt"
+    exclude_stocks = exclude_stocks or []
+    
+    if os.path.exists(scan_file):
+        try:
+            with open(scan_file, 'r') as file:
+                all_stocks = [line.strip().upper() for line in file if line.strip()]
+            
+            # Filter out stocks that are already in portfolio
+            filtered_stocks = [stock for stock in all_stocks if stock not in exclude_stocks]
+            excluded_count = len(all_stocks) - len(filtered_stocks)
+            
+            print(f"🔍 Loaded {len(all_stocks)} stocks from {scan_file}")
+            if excluded_count > 0:
+                print(f"🔍 Excluded {excluded_count} stocks already in portfolio")
+            print(f"🔍 Final scan list: {len(filtered_stocks)} stocks")
+            
+            return filtered_stocks
+        except Exception as e:
+            print(f"❌ Error reading {scan_file}: {e}")
+            return []
+    else:
+        print(f"🔍 {scan_file} not found, skipping market scan")
+        return []
 
 
 def load_telegram_config() -> Optional[Dict]:
@@ -368,7 +393,7 @@ def format_telegram_message(results: List[Dict]) -> str:
     Returns:
         str: Formatted message for Telegram
     """
-    message = "🔔 *Stock Signal Alert*\n\n"
+    message = "🔔 *Portfolio Signal Alert*\n\n"
     message += "📊 *Current Signals:*\n"
     message += "```\n"
     message += f"{'Symbol':<6} {'Signal':<6} {'RSI':<6} {'Price':<10}\n"
@@ -416,6 +441,56 @@ def format_telegram_message(results: List[Dict]) -> str:
     return message
 
 
+def format_scan_telegram_message(results: List[Dict]) -> str:
+    """
+    Format the scan results into a Telegram message showing only buy/sell signals.
+    
+    Args:
+        results (List[Dict]): List of stock analysis results from scan
+        
+    Returns:
+        str: Formatted message for Telegram with only buy/sell signals
+    """
+    buy_signals = []
+    sell_signals = []
+    
+    for result in results:
+        if 'error' not in result:
+            symbol = result['symbol']
+            signal = result['currentSignal']
+            rsi = result['currentRSI']
+            calendar_reasons = result.get('calendarReasons', [])
+            
+            if signal == 'BUY':
+                buy_signals.append(f"{symbol} (RSI: {rsi:.1f})")
+            elif signal == 'SELL':
+                reason = " (Calendar)" if calendar_reasons else ""
+                sell_signals.append(f"{symbol} (RSI: {rsi:.1f}){reason}")
+    
+    # Only send message if there are buy or sell signals
+    if not buy_signals and not sell_signals:
+        return None
+    
+    message = "🔍 *Market Scan Alert*\n\n"
+    
+    if buy_signals:
+        message += "🟢 *Buy Signals Found:*\n"
+        for signal in buy_signals:
+            message += f"• {signal}\n"
+        message += "\n"
+    
+    if sell_signals:
+        message += "🔴 *Sell Signals Found:*\n"
+        for signal in sell_signals:
+            message += f"• {signal}\n"
+        message += "\n"
+    
+    message += f"📅 *Scanned:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    message += "⚠️ *Disclaimer:* Educational purposes only. Not financial advice."
+    
+    return message
+
+
 def send_telegram_notifications(results: List[Dict]) -> None:
     """
     Send stock analysis results to Telegram if configuration exists.
@@ -437,6 +512,34 @@ def send_telegram_notifications(results: List[Dict]) -> None:
             ))
         except Exception as e:
             print(f"❌ Error sending Telegram notifications: {e}")
+
+
+def send_scan_telegram_notifications(scan_results: List[Dict]) -> None:
+    """
+    Send market scan results to Telegram if configuration exists and signals are found.
+    
+    Args:
+        scan_results (List[Dict]): List of stock analysis results from market scan
+    """
+    telegram_config = load_telegram_config()
+    
+    if telegram_config:
+        try:
+            message = format_scan_telegram_message(scan_results)
+            
+            # Only send if there are actual buy/sell signals
+            if message:
+                # Run the async function
+                asyncio.run(send_telegram_message(
+                    telegram_config['api_key'],
+                    telegram_config['user_ids'],
+                    message
+                ))
+                print("📱 Market scan signals sent to Telegram")
+            else:
+                print("🔍 No buy/sell signals found in market scan")
+        except Exception as e:
+            print(f"❌ Error sending scan Telegram notifications: {e}")
 
 
 def analyze_sector(sector_name: str, stocks: List[str], signal_generator: RSISignalGenerator) -> None:
@@ -502,6 +605,25 @@ def main():
     # Send Telegram notifications if configured
     print("\n📱 Checking for Telegram notifications...")
     send_telegram_notifications(results)
+    
+    # Market scan analysis
+    scan_stocks = load_scan_list(exclude_stocks=stocks_to_analyze)
+    if scan_stocks:
+        print(f"\n🔍 MARKET SCAN - Analyzing {len(scan_stocks)} stocks...")
+        scan_results = signal_generator.analyze_multiple_stocks(scan_stocks)
+        
+        # Count signals found
+        buy_count = sum(1 for r in scan_results if 'error' not in r and r['currentSignal'] == 'BUY')
+        sell_count = sum(1 for r in scan_results if 'error' not in r and r['currentSignal'] == 'SELL')
+        
+        print(f"🔍 Scan complete: {buy_count} BUY signals, {sell_count} SELL signals found")
+        
+        # Send scan notifications if signals found
+        if buy_count > 0 or sell_count > 0:
+            print("📱 Sending market scan notifications...")
+            send_scan_telegram_notifications(scan_results)
+        else:
+            print("🔍 No actionable signals found in market scan")
     
     # Sector analysis (optional - uncomment to enable)
     # analyze_sector("Technology", config.TECH_STOCKS, signal_generator)
