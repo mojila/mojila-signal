@@ -27,6 +27,9 @@ def example_single_stock_analysis():
         print(f"Current Price: ${result['currentPrice']}")
         print(f"Current RSI: {result['currentRSI']}")
         print(f"Signal: {result['currentSignal']} ({result['signalStrength']})")
+        print(f"MACD: {result['currentMACD']:.4f}")
+        print(f"MACD Signal: {result['currentMACDSignal']:.4f}")
+        print(f"MACD Position: {result['macdPosition']}")
         print(f"Recent Buy Signals (30d): {result['recentBuySignals']}")
         print(f"Recent Sell Signals (30d): {result['recentSellSignals']}")
         print(f"Last Updated: {result['lastUpdated']}")
@@ -85,12 +88,12 @@ def example_sector_analysis():
     # Analyze tech stocks
     tech_results = signal_generator.analyze_multiple_stocks(config.TECH_STOCKS[:6])
     
-    print(f"{'Symbol':<8} {'Price':<10} {'RSI':<8} {'Signal':<8}")
-    print("-" * 40)
+    print(f"{'Symbol':<8} {'Price':<10} {'RSI':<8} {'Signal':<12} {'MACD':<10} {'Position':<25}")
+    print("-" * 75)
     
     for result in tech_results:
         if 'error' not in result:
-            print(f"{result['symbol']:<8} ${result['currentPrice']:<9} {result['currentRSI']:<7.1f} {result['currentSignal']:<8}")
+            print(f"{result['symbol']:<8} ${result['currentPrice']:<9} {result['currentRSI']:<7.1f} {result['currentSignal']:<12} {result['currentMACD']:<9.4f} {result['macdPosition']:<25}")
     
     print("\n")
 
@@ -262,6 +265,9 @@ def example_telegram_notifications():
                 'currentSignal': 'BUY',
                 'currentRSI': 28.5,
                 'currentPrice': 175.43,
+                'currentMACD': 2.1543,
+                'currentMACDSignal': 1.8932,
+                'macdPosition': 'Golden Cross (Bullish)',
                 'calendarReasons': []
             },
             {
@@ -269,6 +275,9 @@ def example_telegram_notifications():
                 'currentSignal': 'SELL',
                 'currentRSI': 78.9,
                 'currentPrice': 325.31,
+                'currentMACD': -1.7033,
+                'currentMACDSignal': -1.3228,
+                'macdPosition': 'Dead Cross (Bearish)',
                 'calendarReasons': []
             },
             {
@@ -276,6 +285,9 @@ def example_telegram_notifications():
                 'currentSignal': 'HOLD',
                 'currentRSI': 45.7,
                 'currentPrice': 325.31,
+                'currentMACD': 0.5421,
+                'currentMACDSignal': 0.7832,
+                'macdPosition': 'Up Trend',
                 'calendarReasons': []
             }
         ]
@@ -293,6 +305,9 @@ def example_telegram_notifications():
                 'currentSignal': 'BUY',
                 'currentRSI': 25.2,
                 'currentPrice': 425.67,
+                'currentMACD': 3.2145,
+                'currentMACDSignal': 2.8932,
+                'macdPosition': 'Golden Cross (Bullish)',
                 'calendarReasons': []
             },
             {
@@ -300,6 +315,9 @@ def example_telegram_notifications():
                 'currentSignal': 'SELL',
                 'currentRSI': 72.8,
                 'currentPrice': 142.15,
+                'currentMACD': -2.1543,
+                'currentMACDSignal': -1.7821,
+                'macdPosition': 'Dead Cross (Bearish)',
                 'calendarReasons': ['Ex-Dividend']
             }
         ]
@@ -358,6 +376,9 @@ def example_market_scan():
                 'currentSignal': 'BUY',
                 'currentRSI': 28.5,
                 'currentPrice': 175.43,
+                'currentMACD': 2.1543,
+                'currentMACDSignal': 1.8932,
+                'macdPosition': 'Golden Cross (Bullish)',
                 'calendarReasons': []
             },
             {
@@ -365,6 +386,9 @@ def example_market_scan():
                 'currentSignal': 'HOLD',
                 'currentRSI': 45.2,
                 'currentPrice': 325.31,
+                'currentMACD': 0.5421,
+                'currentMACDSignal': 0.7832,
+                'macdPosition': 'Up Trend',
                 'calendarReasons': []
             },
             {
@@ -372,6 +396,9 @@ def example_market_scan():
                 'currentSignal': 'SELL',
                 'currentRSI': 72.8,
                 'currentPrice': 142.15,
+                'currentMACD': -2.1543,
+                'currentMACDSignal': -1.7821,
+                'macdPosition': 'Dead Cross (Bearish)',
                 'calendarReasons': ['Ex-Dividend']
             },
             {
@@ -379,6 +406,9 @@ def example_market_scan():
                 'currentSignal': 'HOLD',
                 'currentRSI': 55.7,
                 'currentPrice': 245.67,
+                'currentMACD': -0.3214,
+                'currentMACDSignal': -0.1892,
+                'macdPosition': 'Down Trend',
                 'calendarReasons': []
             }
         ]

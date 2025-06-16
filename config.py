@@ -61,3 +61,9 @@ RSI_DECIMAL_PLACES = 1
 # Alert thresholds (for future enhancement)
 STRONG_BUY_THRESHOLD = 20   # RSI below this value indicates strong buy signal
 STRONG_SELL_THRESHOLD = 80  # RSI above this value indicates strong sell signal
+
+# MACD Configuration
+MACD_FAST_PERIOD = 12       # Fast EMA period for MACD calculation
+MACD_SLOW_PERIOD = 26       # Slow EMA period for MACD calculation
+MACD_SIGNAL_PERIOD = 9      # Signal line EMA period for MACD calculation
+MACD_DECIMAL_PLACES = 4     # Decimal places for MACD values

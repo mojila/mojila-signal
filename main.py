@@ -62,6 +62,57 @@ class RSISignalGenerator:
         
         return rsi
     
+    def calculate_macd(self, prices: pd.Series) -> Dict[str, pd.Series]:
+        """
+        Calculate MACD (Moving Average Convergence Divergence) indicators.
+        
+        Args:
+            prices (pd.Series): Series of closing prices
+            
+        Returns:
+            Dict[str, pd.Series]: Dictionary containing MACD line, signal line, and histogram
+        """
+        # Calculate EMAs
+        ema_fast = prices.ewm(span=config.MACD_FAST_PERIOD).mean()
+        ema_slow = prices.ewm(span=config.MACD_SLOW_PERIOD).mean()
+        
+        # Calculate MACD line
+        macd_line = ema_fast - ema_slow
+        
+        # Calculate signal line (EMA of MACD line)
+        signal_line = macd_line.ewm(span=config.MACD_SIGNAL_PERIOD).mean()
+        
+        # Calculate histogram
+        histogram = macd_line - signal_line
+        
+        return {
+            'MACD': macd_line,
+            'Signal': signal_line,
+            'Histogram': histogram
+        }
+    
+    def determine_macd_position(self, macd: float, signal: float) -> str:
+        """
+        Determine MACD position category based on MACD and signal line values.
+        
+        Args:
+            macd (float): Current MACD line value
+            signal (float): Current signal line value
+            
+        Returns:
+            str: Position category (Golden Cross, Dead Cross, Up Trend, Down Trend)
+        """
+        if macd > signal and macd > 0 and signal > 0:
+            return "Golden Cross (Bullish)"
+        elif macd < signal and macd < 0 and signal < 0:
+            return "Dead Cross (Bearish)"
+        elif macd > 0 and signal > 0:
+            return "MACD & Signal above zero line (Up Trend)"
+        elif macd < 0 and signal < 0:
+            return "MACD & Signal Line below zero line (Down Trend)"
+        else:
+            return "Mixed Signals"
+    
     def get_stock_data(self, symbol: str, period: str = "1y") -> pd.DataFrame:
         """
         Fetch stock data from Yahoo Finance.
@@ -189,10 +240,30 @@ class RSISignalGenerator:
         # Calculate RSI
         data['RSI'] = self.calculate_rsi(data['Close'])
         
-        # Generate signals
+        # Calculate MACD
+        macd_data = self.calculate_macd(data['Close'])
+        data['MACD'] = macd_data['MACD']
+        data['MACD_Signal'] = macd_data['Signal']
+        data['MACD_Histogram'] = macd_data['Histogram']
+        
+        # Generate signals based on RSI
         data['Signal'] = 'HOLD'
         data.loc[data['RSI'] <= self.oversold_threshold, 'Signal'] = 'BUY'
         data.loc[data['RSI'] >= self.overbought_threshold, 'Signal'] = 'SELL'
+        
+        # Enhance signals with MACD analysis
+        # Golden Cross (MACD crosses above signal line) - additional BUY confirmation
+        macd_bullish = (data['MACD'] > data['MACD_Signal']) & (data['MACD'].shift(1) <= data['MACD_Signal'].shift(1))
+        # Dead Cross (MACD crosses below signal line) - additional SELL confirmation
+        macd_bearish = (data['MACD'] < data['MACD_Signal']) & (data['MACD'].shift(1) >= data['MACD_Signal'].shift(1))
+        
+        # Strengthen BUY signals when MACD confirms
+        data.loc[macd_bullish & (data['Signal'] == 'BUY'), 'Signal'] = 'STRONG_BUY'
+        data.loc[macd_bullish & (data['Signal'] == 'HOLD') & (data['RSI'] < 50), 'Signal'] = 'BUY'
+        
+        # Strengthen SELL signals when MACD confirms
+        data.loc[macd_bearish & (data['Signal'] == 'SELL'), 'Signal'] = 'STRONG_SELL'
+        data.loc[macd_bearish & (data['Signal'] == 'HOLD') & (data['RSI'] > 50), 'Signal'] = 'SELL'
         
         # Check calendar events for additional SELL signal
         calendar_events = {'ex_date_tomorrow': False, 'earnings_tomorrow': False}
@@ -204,15 +275,21 @@ class RSISignalGenerator:
                 # Set the last signal to SELL due to calendar event
                 data.iloc[-1, data.columns.get_loc('Signal')] = 'SELL'
         
-        # Get current signal
+        # Get current signal and MACD values
         current_rsi = data['RSI'].iloc[-1]
         current_signal = data['Signal'].iloc[-1]
         current_price = data['Close'].iloc[-1]
+        current_macd = data['MACD'].iloc[-1]
+        current_macd_signal = data['MACD_Signal'].iloc[-1]
+        current_macd_histogram = data['MACD_Histogram'].iloc[-1]
+        
+        # Determine MACD position category
+        macd_position = self.determine_macd_position(current_macd, current_macd_signal)
         
         # Count recent signals
         recent_data = data.tail(config.MAX_RECENT_DAYS)
-        buy_signals = len(recent_data[recent_data['Signal'] == 'BUY'])
-        sell_signals = len(recent_data[recent_data['Signal'] == 'SELL'])
+        buy_signals = len(recent_data[recent_data['Signal'].isin(['BUY', 'STRONG_BUY'])])
+        sell_signals = len(recent_data[recent_data['Signal'].isin(['SELL', 'STRONG_SELL'])])
         
         # Determine signal strength
         signal_strength = "NORMAL"
@@ -237,6 +314,10 @@ class RSISignalGenerator:
             "currentRSI": round(current_rsi, config.RSI_DECIMAL_PLACES),
             "currentSignal": current_signal,
             "signalStrength": signal_strength,
+            "currentMACD": round(current_macd, config.MACD_DECIMAL_PLACES),
+            "currentMACDSignal": round(current_macd_signal, config.MACD_DECIMAL_PLACES),
+            "currentMACDHistogram": round(current_macd_histogram, config.MACD_DECIMAL_PLACES),
+            "macdPosition": macd_position,
             "recentBuySignals": buy_signals,
             "recentSellSignals": sell_signals,
             "calendarEvents": calendar_events,
@@ -396,8 +477,8 @@ def format_telegram_message(results: List[Dict]) -> str:
     message = "🔔 *Portfolio Signal Alert*\n\n"
     message += "📊 *Current Signals:*\n"
     message += "```\n"
-    message += f"{'Symbol':<6} {'Signal':<6} {'RSI':<6} {'Price':<10}\n"
-    message += "-" * 35 + "\n"
+    message += f"{'Symbol':<6} {'Signal':<6} {'RSI':<6} {'Price':<10} {'MACD Pos':<15}\n"
+    message += "-" * 50 + "\n"
     
     buy_signals = []
     sell_signals = []
@@ -410,18 +491,22 @@ def format_telegram_message(results: List[Dict]) -> str:
             price = result['currentPrice']
             calendar_reasons = result.get('calendarReasons', [])
             
+            macd_position = result.get('macdPosition', 'N/A')
+            
             # Add emoji indicators
             if signal == 'BUY':
                 signal_emoji = "🟢"
-                buy_signals.append(f"{symbol} (RSI: {rsi:.1f})")
+                buy_signals.append(f"{symbol} (RSI: {rsi:.1f}, {macd_position})")
             elif signal == 'SELL':
                 signal_emoji = "🔴"
                 reason = " (Calendar)" if calendar_reasons else ""
-                sell_signals.append(f"{symbol} (RSI: {rsi:.1f}){reason}")
+                sell_signals.append(f"{symbol} (RSI: {rsi:.1f}, {macd_position}){reason}")
             else:
                 signal_emoji = "🟡"
             
-            message += f"{symbol:<6} {signal_emoji}{signal:<5} {rsi:<6.1f} ${price:<9.2f}\n"
+            # Truncate MACD position for table display
+            macd_short = macd_position[:13] + ".." if len(macd_position) > 15 else macd_position
+            message += f"{symbol:<6} {signal_emoji}{signal:<5} {rsi:<6.1f} ${price:<9.2f} {macd_short:<15}\n"
     
     message += "```\n\n"
     
@@ -460,12 +545,13 @@ def format_scan_telegram_message(results: List[Dict]) -> str:
             signal = result['currentSignal']
             rsi = result['currentRSI']
             calendar_reasons = result.get('calendarReasons', [])
+            macd_position = result.get('macdPosition', 'N/A')
             
             if signal == 'BUY':
-                buy_signals.append(f"{symbol} (RSI: {rsi:.1f})")
+                buy_signals.append(f"{symbol} (RSI: {rsi:.1f}, {macd_position})")
             elif signal == 'SELL':
                 reason = " (Calendar)" if calendar_reasons else ""
-                sell_signals.append(f"{symbol} (RSI: {rsi:.1f}){reason}")
+                sell_signals.append(f"{symbol} (RSI: {rsi:.1f}, {macd_position}){reason}")
     
     # Only send message if there are buy or sell signals
     if not buy_signals and not sell_signals:
@@ -552,9 +638,9 @@ def analyze_sector(sector_name: str, stocks: List[str], signal_generator: RSISig
         signal_generator (RSISignalGenerator): Signal generator instance
     """
     print(f"\n{sector_name.upper()} SECTOR ANALYSIS:")
-    print("-" * 90)
-    print(f"{'Symbol':<8} {'Price':<10} {'RSI':<8} {'Signal':<8} {'Strength':<10} {'Buy/30d':<8} {'Sell/30d':<8} {'Calendar':<15}")
-    print("-" * 90)
+    print("-" * 140)
+    print(f"{'Symbol':<8} {'Price':<10} {'RSI':<8} {'Signal':<12} {'MACD':<10} {'Position':<30} {'Buy/30d':<8} {'Sell/30d':<8} {'Calendar':<15}")
+    print("-" * 140)
     
     results = signal_generator.analyze_multiple_stocks(stocks[:8])  # Limit to 8 stocks per sector
     
@@ -562,7 +648,9 @@ def analyze_sector(sector_name: str, stocks: List[str], signal_generator: RSISig
         if 'error' not in result:
             strength_indicator = "⚡" if result['signalStrength'] == "STRONG" else "  "
             calendar_indicator = ", ".join(result.get('calendarReasons', [])) or "-"
-            print(f"{result['symbol']:<8} ${result['currentPrice']:<9} {result['currentRSI']:<7.1f} {result['currentSignal']:<8} {strength_indicator}{result['signalStrength']:<8} {result['recentBuySignals']:<8} {result['recentSellSignals']:<8} {calendar_indicator:<15}")
+            macd_value = f"{result['currentMACD']:.4f}"
+            position_category = result['macdPosition']
+            print(f"{result['symbol']:<8} ${result['currentPrice']:<9} {result['currentRSI']:<7.1f} {strength_indicator}{result['currentSignal']:<10} {macd_value:<10} {position_category:<30} {result['recentBuySignals']:<8} {result['recentSellSignals']:<8} {calendar_indicator:<15}")
         else:
             print(f"{result.get('symbol', 'Unknown'):<8} Error fetching data")
 
@@ -590,15 +678,17 @@ def main():
     
     # Display main results
     print("\nCURRENT SIGNALS:")
-    print("-" * 90)
-    print(f"{'Symbol':<8} {'Price':<10} {'RSI':<8} {'Signal':<8} {'Strength':<10} {'Buy/30d':<8} {'Sell/30d':<8} {'Calendar':<15}")
-    print("-" * 90)
+    print("-" * 140)
+    print(f"{'Symbol':<8} {'Price':<10} {'RSI':<8} {'Signal':<12} {'MACD':<10} {'Position':<30} {'Buy/30d':<8} {'Sell/30d':<8} {'Calendar':<15}")
+    print("-" * 140)
     
     for result in results:
         if 'error' not in result:
             strength_indicator = "⚡" if result['signalStrength'] == "STRONG" else "  "
             calendar_indicator = ", ".join(result.get('calendarReasons', [])) or "-"
-            print(f"{result['symbol']:<8} ${result['currentPrice']:<9} {result['currentRSI']:<7.1f} {result['currentSignal']:<8} {strength_indicator}{result['signalStrength']:<8} {result['recentBuySignals']:<8} {result['recentSellSignals']:<8} {calendar_indicator:<15}")
+            macd_value = f"{result['currentMACD']:.4f}"
+            position_category = result['macdPosition']
+            print(f"{result['symbol']:<8} ${result['currentPrice']:<9} {result['currentRSI']:<7.1f} {strength_indicator}{result['currentSignal']:<10} {macd_value:<10} {position_category:<30} {result['recentBuySignals']:<8} {result['recentSellSignals']:<8} {calendar_indicator:<15}")
         else:
             print(f"{result.get('symbol', 'Unknown'):<8} Error fetching data")
     
@@ -629,15 +719,23 @@ def main():
     # analyze_sector("Technology", config.TECH_STOCKS, signal_generator)
     # analyze_sector("Financial", config.FINANCIAL_STOCKS, signal_generator)
     
-    print("-" * 90)
+    print("-" * 140)
     print("\nLegend:")
-    print("BUY  - RSI <= 30 (Oversold, potential buying opportunity)")
-    print("SELL - RSI >= 70 (Overbought, potential selling opportunity)")
-    print("     - Also triggered by ex-dividend or earnings date tomorrow")
-    print("HOLD - RSI between 30-70 (Neutral zone)")
-    print("⚡   - Strong signal (RSI <= 20 or RSI >= 80)")
-    print(f"Buy/30d, Sell/30d - Number of signals in the last {config.MAX_RECENT_DAYS} days")
-    print("Calendar - Shows upcoming ex-dividend or earnings events")
+    print("SIGNALS:")
+    print("  BUY        - RSI <= 30 (Oversold) or MACD bullish crossover")
+    print("  SELL       - RSI >= 70 (Overbought) or MACD bearish crossover")
+    print("  STRONG_BUY - RSI <= 30 + MACD Golden Cross confirmation")
+    print("  STRONG_SELL- RSI >= 70 + MACD Dead Cross confirmation")
+    print("  HOLD       - RSI between 30-70 with no strong MACD signals")
+    print("  ⚡          - Enhanced signal with MACD confirmation")
+    print("\nMACD POSITIONS:")
+    print("  Golden Cross (Bullish)     - MACD > Signal Line, both above zero")
+    print("  Dead Cross (Bearish)       - MACD < Signal Line, both below zero")
+    print("  Up Trend                   - MACD & Signal above zero line")
+    print("  Down Trend                 - MACD & Signal below zero line")
+    print("\nOTHER:")
+    print(f"  Buy/30d, Sell/30d - Number of signals in the last {config.MAX_RECENT_DAYS} days")
+    print("  Calendar - Shows upcoming ex-dividend or earnings events")
     print("\n⚠️  Disclaimer: This is for educational purposes only. Not financial advice.")
 
 

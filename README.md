@@ -1,27 +1,40 @@
-# Mojila Signal - RSI Stock Market Signal Generator
+# Mojila Signal - Enhanced Stock Market Signal Generator
 
-A Python-based stock market signal generator that provides buy/sell recommendations for US stocks using RSI (Relative Strength Index) technical indicators.
+A Python-based stock market signal generator that provides buy/sell recommendations for US stocks using RSI (Relative Strength Index) and MACD (Moving Average Convergence Divergence) technical indicators.
 
 ## Features
 
 - **RSI-based Signal Generation**: Uses 14-period RSI with customizable thresholds
-- **Buy Signal**: RSI ≤ 30 (Oversold condition)
-- **Sell Signal**: RSI ≥ 70 (Overbought condition) OR upcoming calendar events
+- **MACD Analysis**: 12-day EMA, 26-day EMA MACD Line, and 9-day Signal Line
+- **Enhanced Signal Precision**: Combines RSI and MACD for more accurate signals
+- **Position Categories**: Golden Cross, Dead Cross, Up Trend, Down Trend classifications
+- **Buy Signal**: RSI ≤ 30 (Oversold) or MACD bullish crossover
+- **Sell Signal**: RSI ≥ 70 (Overbought) or MACD bearish crossover OR upcoming calendar events
+- **Strong Signals**: Enhanced BUY/SELL signals when RSI and MACD confirm each other
 - **Calendar Event Detection**: Automatic SELL signal when ex-dividend or earnings date is tomorrow
-- **Hold Signal**: RSI between 30-70 (Neutral zone)
+- **Hold Signal**: RSI between 30-70 with no strong MACD signals
 - **Multiple Stock Analysis**: Analyze multiple stocks simultaneously
-- **Configurable Parameters**: Customize RSI period and thresholds
+- **Configurable Parameters**: Customize RSI and MACD periods and thresholds
 - **Error Handling**: Robust error handling with retry mechanisms
-- **Signal Strength Indicators**: Strong signals for extreme RSI values (≤20 or ≥80)
 
 ## Signal Logic
 
-The signal generator uses the following logic:
+The enhanced signal generator uses the following logic combining RSI and MACD:
 
-- **BUY**: When RSI ≤ 30 (stock is oversold)
-- **SELL**: When RSI ≥ 70 (stock is overbought) OR when ex-dividend date or earnings report date is tomorrow
-- **HOLD**: When RSI is between 30 and 70 (neutral zone) and no calendar events
-- **STRONG**: Additional indicator when RSI ≤ 20 or RSI ≥ 80
+### Basic Signals
+- **BUY**: When RSI ≤ 30 (stock is oversold) or MACD bullish crossover
+- **SELL**: When RSI ≥ 70 (stock is overbought) or MACD bearish crossover OR calendar events
+- **HOLD**: When RSI is between 30-70 with no strong MACD signals
+
+### Enhanced Signals
+- **STRONG_BUY**: RSI ≤ 30 + MACD Golden Cross confirmation
+- **STRONG_SELL**: RSI ≥ 70 + MACD Dead Cross confirmation
+
+### MACD Position Categories
+- **Golden Cross (Bullish)**: MACD > Signal Line, both above zero
+- **Dead Cross (Bearish)**: MACD < Signal Line, both below zero
+- **Up Trend**: MACD & Signal above zero line
+- **Down Trend**: MACD & Signal below zero line
 
 ### Calendar Events
 
@@ -211,7 +224,7 @@ results = signal_generator.analyze_multiple_stocks(stocks)
 
 ## Output Format
 
-The signal generator returns a dictionary with the following information:
+The enhanced signal generator returns a dictionary with the following information:
 
 ```python
 {
@@ -220,6 +233,10 @@ The signal generator returns a dictionary with the following information:
     "currentRSI": 45.67,
     "currentSignal": "HOLD",
     "signalStrength": "NORMAL",
+    "currentMACD": -1.7033,
+    "currentMACDSignal": -1.3228,
+    "currentMACDHistogram": -0.3805,
+    "macdPosition": "Dead Cross (Bearish)",
     "recentBuySignals": 2,
     "recentSellSignals": 1,
     "calendarEvents": {
