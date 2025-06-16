@@ -267,7 +267,7 @@ def example_telegram_notifications():
                 'currentPrice': 175.43,
                 'currentMACD': 2.1543,
                 'currentMACDSignal': 1.8932,
-                'macdPosition': 'Golden Cross (Bullish)',
+                'macdPosition': 'Golden Cross',
                 'calendarReasons': []
             },
             {
@@ -277,7 +277,7 @@ def example_telegram_notifications():
                 'currentPrice': 325.31,
                 'currentMACD': -1.7033,
                 'currentMACDSignal': -1.3228,
-                'macdPosition': 'Dead Cross (Bearish)',
+                'macdPosition': 'Dead Cross',
                 'calendarReasons': []
             },
             {
@@ -307,7 +307,7 @@ def example_telegram_notifications():
                 'currentPrice': 425.67,
                 'currentMACD': 3.2145,
                 'currentMACDSignal': 2.8932,
-                'macdPosition': 'Golden Cross (Bullish)',
+                'macdPosition': 'Golden Cross',
                 'calendarReasons': []
             },
             {
@@ -317,7 +317,7 @@ def example_telegram_notifications():
                 'currentPrice': 142.15,
                 'currentMACD': -2.1543,
                 'currentMACDSignal': -1.7821,
-                'macdPosition': 'Dead Cross (Bearish)',
+                'macdPosition': 'Dead Cross',
                 'calendarReasons': ['Ex-Dividend']
             }
         ]
@@ -378,7 +378,7 @@ def example_market_scan():
                 'currentPrice': 175.43,
                 'currentMACD': 2.1543,
                 'currentMACDSignal': 1.8932,
-                'macdPosition': 'Golden Cross (Bullish)',
+                'macdPosition': 'Golden Cross',
                 'calendarReasons': []
             },
             {
@@ -398,7 +398,7 @@ def example_market_scan():
                 'currentPrice': 142.15,
                 'currentMACD': -2.1543,
                 'currentMACDSignal': -1.7821,
-                'macdPosition': 'Dead Cross (Bearish)',
+                'macdPosition': 'Dead Cross',
                 'calendarReasons': ['Ex-Dividend']
             },
             {

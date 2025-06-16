@@ -31,8 +31,8 @@ The enhanced signal generator uses the following logic combining RSI and MACD:
 - **STRONG_SELL**: RSI ≥ 70 + MACD Dead Cross confirmation
 
 ### MACD Position Categories
-- **Golden Cross (Bullish)**: MACD > Signal Line, both above zero
-- **Dead Cross (Bearish)**: MACD < Signal Line, both below zero
+- **Golden Cross**: MACD > Signal Line, both above zero
+- **Dead Cross**: MACD < Signal Line, both below zero
 - **Up Trend**: MACD & Signal above zero line
 - **Down Trend**: MACD & Signal below zero line
 
@@ -236,7 +236,7 @@ The enhanced signal generator returns a dictionary with the following informatio
     "currentMACD": -1.7033,
     "currentMACDSignal": -1.3228,
     "currentMACDHistogram": -0.3805,
-    "macdPosition": "Dead Cross (Bearish)",
+    "macdPosition": "Dead Cross",
     "recentBuySignals": 2,
     "recentSellSignals": 1,
     "calendarEvents": {
@@ -285,10 +285,6 @@ Buy/30d, Sell/30d - Number of signals in the last 30 days
 - **yfinance**: Yahoo Finance API for stock data
 - **pandas**: Data manipulation and analysis
 - **numpy**: Numerical computing
-
-## Disclaimer
-
-⚠️ **Important**: This tool is for educational and informational purposes only. It should not be considered as financial advice. Always do your own research and consult with financial professionals before making investment decisions. Past performance does not guarantee future results.
 
 ## RSI Technical Indicator
 

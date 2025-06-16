@@ -103,13 +103,13 @@ class RSISignalGenerator:
             str: Position category (Golden Cross, Dead Cross, Up Trend, Down Trend)
         """
         if macd > signal and macd > 0 and signal > 0:
-            return "Golden Cross (Bullish)"
+            return "Golden Cross"
         elif macd < signal and macd < 0 and signal < 0:
-            return "Dead Cross (Bearish)"
+            return "Dead Cross"
         elif macd > 0 and signal > 0:
-            return "MACD & Signal above zero line (Up Trend)"
+            return "Up Trend"
         elif macd < 0 and signal < 0:
-            return "MACD & Signal Line below zero line (Down Trend)"
+            return "Down Trend"
         else:
             return "Mixed Signals"
     
@@ -246,24 +246,35 @@ class RSISignalGenerator:
         data['MACD_Signal'] = macd_data['Signal']
         data['MACD_Histogram'] = macd_data['Histogram']
         
-        # Generate signals based on RSI
+        # Generate signals based on MACD analysis (primary signal determinant)
         data['Signal'] = 'HOLD'
-        data.loc[data['RSI'] <= self.oversold_threshold, 'Signal'] = 'BUY'
-        data.loc[data['RSI'] >= self.overbought_threshold, 'Signal'] = 'SELL'
         
-        # Enhance signals with MACD analysis
-        # Golden Cross (MACD crosses above signal line) - additional BUY confirmation
+        # MACD crossover signals
+        # Golden Cross (MACD crosses above signal line) - BUY signal
         macd_bullish = (data['MACD'] > data['MACD_Signal']) & (data['MACD'].shift(1) <= data['MACD_Signal'].shift(1))
-        # Dead Cross (MACD crosses below signal line) - additional SELL confirmation
+        # Dead Cross (MACD crosses below signal line) - SELL signal
         macd_bearish = (data['MACD'] < data['MACD_Signal']) & (data['MACD'].shift(1) >= data['MACD_Signal'].shift(1))
         
-        # Strengthen BUY signals when MACD confirms
-        data.loc[macd_bullish & (data['Signal'] == 'BUY'), 'Signal'] = 'STRONG_BUY'
-        data.loc[macd_bullish & (data['Signal'] == 'HOLD') & (data['RSI'] < 50), 'Signal'] = 'BUY'
+        # Set signals based on MACD crossovers
+        data.loc[macd_bullish, 'Signal'] = 'BUY'
+        data.loc[macd_bearish, 'Signal'] = 'SELL'
         
-        # Strengthen SELL signals when MACD confirms
-        data.loc[macd_bearish & (data['Signal'] == 'SELL'), 'Signal'] = 'STRONG_SELL'
-        data.loc[macd_bearish & (data['Signal'] == 'HOLD') & (data['RSI'] > 50), 'Signal'] = 'SELL'
+        # Additional MACD-based signals for trending conditions
+        # Strong BUY: MACD above signal line and both above zero (strong uptrend)
+        strong_bullish = (data['MACD'] > data['MACD_Signal']) & (data['MACD'] > 0) & (data['MACD_Signal'] > 0)
+        data.loc[strong_bullish & (data['MACD_Histogram'] > data['MACD_Histogram'].shift(1)), 'Signal'] = 'STRONG_BUY'
+        
+        # Strong SELL: MACD below signal line and both below zero (strong downtrend)
+        strong_bearish = (data['MACD'] < data['MACD_Signal']) & (data['MACD'] < 0) & (data['MACD_Signal'] < 0)
+        data.loc[strong_bearish & (data['MACD_Histogram'] < data['MACD_Histogram'].shift(1)), 'Signal'] = 'STRONG_SELL'
+        
+        # BUY when MACD is above signal line (uptrend continuation)
+        uptrend = (data['MACD'] > data['MACD_Signal']) & (data['Signal'] == 'HOLD')
+        data.loc[uptrend, 'Signal'] = 'BUY'
+        
+        # SELL when MACD is below signal line (downtrend continuation)
+        downtrend = (data['MACD'] < data['MACD_Signal']) & (data['Signal'] == 'HOLD')
+        data.loc[downtrend, 'Signal'] = 'SELL'
         
         # Check calendar events for additional SELL signal
         calendar_events = {'ex_date_tomorrow': False, 'earnings_tomorrow': False}
@@ -291,12 +302,17 @@ class RSISignalGenerator:
         buy_signals = len(recent_data[recent_data['Signal'].isin(['BUY', 'STRONG_BUY'])])
         sell_signals = len(recent_data[recent_data['Signal'].isin(['SELL', 'STRONG_SELL'])])
         
-        # Determine signal strength
+        # Determine signal strength based on MACD conditions
         signal_strength = "NORMAL"
-        if current_rsi <= config.STRONG_BUY_THRESHOLD:
+        if current_signal in ['STRONG_BUY', 'STRONG_SELL']:
             signal_strength = "STRONG"
-        elif current_rsi >= config.STRONG_SELL_THRESHOLD:
-            signal_strength = "STRONG"
+        elif current_signal in ['BUY', 'SELL']:
+            # Check for strong MACD momentum
+            if abs(current_macd_histogram) > abs(data['MACD_Histogram'].iloc[-2]):
+                signal_strength = "STRONG"
+            # Check for strong MACD divergence from signal line
+            elif abs(current_macd - current_macd_signal) > data['MACD'].std() * 0.5:
+                signal_strength = "STRONG"
         
         # Get updated current signal after calendar check
         current_signal = data['Signal'].iloc[-1]
@@ -464,25 +480,23 @@ async def send_telegram_message(bot_token: str, user_ids: List[str], message: st
             print(f"❌ Unexpected error sending to user {user_id}: {e}")
 
 
-def format_telegram_message(results: List[Dict]) -> str:
+def format_telegram_message(results: List[Dict]) -> List[str]:
     """
-    Format the stock analysis results into a Telegram message.
+    Format the stock analysis results into chunked Telegram messages.
     
     Args:
         results (List[Dict]): List of stock analysis results
         
     Returns:
-        str: Formatted message for Telegram
+        List[str]: List of formatted message chunks for Telegram
     """
-    message = "🔔 *Portfolio Signal Alert*\n\n"
-    message += "📊 *Current Signals:*\n"
-    message += "```\n"
-    message += f"{'Symbol':<6} {'Signal':<6} {'RSI':<6} {'Price':<10} {'MACD Pos':<15}\n"
-    message += "-" * 50 + "\n"
+    MAX_MESSAGE_LENGTH = 4000  # Telegram limit is 4096, leave some buffer
     
     buy_signals = []
     sell_signals = []
+    table_rows = []
     
+    # Process results and build components
     for result in results:
         if 'error' not in result:
             symbol = result['symbol']
@@ -490,7 +504,6 @@ def format_telegram_message(results: List[Dict]) -> str:
             rsi = result['currentRSI']
             price = result['currentPrice']
             calendar_reasons = result.get('calendarReasons', [])
-            
             macd_position = result.get('macdPosition', 'N/A')
             
             # Add emoji indicators
@@ -506,36 +519,102 @@ def format_telegram_message(results: List[Dict]) -> str:
             
             # Truncate MACD position for table display
             macd_short = macd_position[:13] + ".." if len(macd_position) > 15 else macd_position
-            message += f"{symbol:<6} {signal_emoji}{signal:<5} {rsi:<6.1f} ${price:<9.2f} {macd_short:<15}\n"
+            table_rows.append(f"{symbol:<6} {signal_emoji}{signal:<5} {rsi:<6.1f} ${price:<9.2f} {macd_short:<15}")
     
-    message += "```\n\n"
+    messages = []
     
-    # Add summary
+    # Build header and table
+    header = "🔔 *Portfolio Signal Alert*\n\n📊 *Current Signals:*\n```\n"
+    header += f"{'Symbol':<6} {'Signal':<6} {'RSI':<6} {'Price':<10} {'MACD Pos':<15}\n"
+    header += "-" * 50 + "\n"
+    
+    # Chunk table rows if needed
+    current_message = header
+    for row in table_rows:
+        test_message = current_message + row + "\n"
+        if len(test_message) > MAX_MESSAGE_LENGTH - 200:  # Leave space for footer
+            current_message += "```\n\n📋 *Continued in next message...*"
+            messages.append(current_message)
+            current_message = "📊 *Portfolio Signals (continued):*\n```\n" + row + "\n"
+        else:
+            current_message += row + "\n"
+    
+    current_message += "```\n\n"
+    
+    # Add signal summaries
     if buy_signals:
-        message += "🟢 *Buy Signals:* " + ", ".join(buy_signals) + "\n\n"
+        buy_text = "🟢 *Buy Signals:* "
+        # Chunk buy signals if too long
+        buy_chunks = []
+        current_chunk = ""
+        for signal in buy_signals:
+            test_chunk = current_chunk + (signal + ", " if current_chunk else signal)
+            if len(buy_text + test_chunk) > 500:  # Reasonable line length
+                buy_chunks.append(current_chunk.rstrip(", "))
+                current_chunk = signal
+            else:
+                current_chunk = test_chunk + ", " if current_chunk else signal
+        if current_chunk:
+            buy_chunks.append(current_chunk.rstrip(", "))
+        
+        for i, chunk in enumerate(buy_chunks):
+            if i == 0:
+                current_message += buy_text + chunk + "\n"
+            else:
+                current_message += "   " + chunk + "\n"
+        current_message += "\n"
     
     if sell_signals:
-        message += "🔴 *Sell Signals:* " + ", ".join(sell_signals) + "\n\n"
+        sell_text = "🔴 *Sell Signals:* "
+        # Chunk sell signals if too long
+        sell_chunks = []
+        current_chunk = ""
+        for signal in sell_signals:
+            test_chunk = current_chunk + (signal + ", " if current_chunk else signal)
+            if len(sell_text + test_chunk) > 500:  # Reasonable line length
+                sell_chunks.append(current_chunk.rstrip(", "))
+                current_chunk = signal
+            else:
+                current_chunk = test_chunk + ", " if current_chunk else signal
+        if current_chunk:
+            sell_chunks.append(current_chunk.rstrip(", "))
+        
+        for i, chunk in enumerate(sell_chunks):
+            if i == 0:
+                current_message += sell_text + chunk + "\n"
+            else:
+                current_message += "   " + chunk + "\n"
+        current_message += "\n"
     
     if not buy_signals and not sell_signals:
-        message += "🟡 *No active buy/sell signals*\n\n"
+        current_message += "🟡 *No active buy/sell signals*\n\n"
     
-    message += f"📅 *Generated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-    message += "⚠️ *Disclaimer:* Educational purposes only. Not financial advice."
+    # Add footer
+    footer = f"📅 *Generated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     
-    return message
+    # Check if current message with footer exceeds limit
+    if len(current_message + footer) > MAX_MESSAGE_LENGTH:
+        messages.append(current_message.rstrip("\n"))
+        messages.append(footer)
+    else:
+        current_message += footer
+        messages.append(current_message)
+    
+    return messages
 
 
-def format_scan_telegram_message(results: List[Dict]) -> str:
+def format_scan_telegram_message(results: List[Dict]) -> List[str]:
     """
-    Format the scan results into a Telegram message showing only buy/sell signals.
+    Format the scan results into chunked Telegram messages showing only buy/sell signals.
     
     Args:
         results (List[Dict]): List of stock analysis results from scan
         
     Returns:
-        str: Formatted message for Telegram with only buy/sell signals
+        List[str]: List of formatted message chunks for Telegram, or empty list if no signals
     """
+    MAX_MESSAGE_LENGTH = 4000  # Telegram limit is 4096, leave some buffer
+    
     buy_signals = []
     sell_signals = []
     
@@ -555,26 +634,66 @@ def format_scan_telegram_message(results: List[Dict]) -> str:
     
     # Only send message if there are buy or sell signals
     if not buy_signals and not sell_signals:
-        return None
+        return []
     
-    message = "🔍 *Market Scan Alert*\n\n"
+    messages = []
+    current_message = "🔍 *Market Scan Alert*\n\n"
     
+    # Add buy signals with chunking
     if buy_signals:
-        message += "🟢 *Buy Signals Found:*\n"
+        buy_header = "🟢 *Buy Signals Found:*\n"
+        current_message += buy_header
+        
         for signal in buy_signals:
-            message += f"• {signal}\n"
-        message += "\n"
+            signal_line = f"• {signal}\n"
+            test_message = current_message + signal_line
+            
+            if len(test_message) > MAX_MESSAGE_LENGTH - 300:  # Leave space for footer
+                current_message += "\n📋 *Continued in next message...*"
+                messages.append(current_message)
+                current_message = "🔍 *Market Scan Alert (continued)*\n\n🟢 *Buy Signals (continued):*\n" + signal_line
+            else:
+                current_message += signal_line
+        
+        current_message += "\n"
     
+    # Add sell signals with chunking
     if sell_signals:
-        message += "🔴 *Sell Signals Found:*\n"
+        sell_header = "🔴 *Sell Signals Found:*\n"
+        test_message = current_message + sell_header
+        
+        if len(test_message) > MAX_MESSAGE_LENGTH - 300:  # Leave space for footer
+            current_message += "📋 *Continued in next message...*"
+            messages.append(current_message)
+            current_message = "🔍 *Market Scan Alert (continued)*\n\n" + sell_header
+        else:
+            current_message += sell_header
+        
         for signal in sell_signals:
-            message += f"• {signal}\n"
-        message += "\n"
+            signal_line = f"• {signal}\n"
+            test_message = current_message + signal_line
+            
+            if len(test_message) > MAX_MESSAGE_LENGTH - 300:  # Leave space for footer
+                current_message += "\n📋 *Continued in next message...*"
+                messages.append(current_message)
+                current_message = "🔍 *Market Scan Alert (continued)*\n\n🔴 *Sell Signals (continued):*\n" + signal_line
+            else:
+                current_message += signal_line
+        
+        current_message += "\n"
     
-    message += f"📅 *Scanned:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-    message += "⚠️ *Disclaimer:* Educational purposes only. Not financial advice."
+    # Add footer
+    footer = f"📅 *Scanned:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     
-    return message
+    # Check if current message with footer exceeds limit
+    if len(current_message + footer) > MAX_MESSAGE_LENGTH:
+        messages.append(current_message.rstrip("\n"))
+        messages.append(footer)
+    else:
+        current_message += footer
+        messages.append(current_message)
+    
+    return messages
 
 
 def send_telegram_notifications(results: List[Dict]) -> None:
@@ -588,14 +707,21 @@ def send_telegram_notifications(results: List[Dict]) -> None:
     
     if telegram_config:
         try:
-            message = format_telegram_message(results)
+            message_chunks = format_telegram_message(results)
             
-            # Run the async function
-            asyncio.run(send_telegram_message(
-                telegram_config['api_key'],
-                telegram_config['user_ids'],
-                message
-            ))
+            # Send each message chunk
+            for i, message in enumerate(message_chunks):
+                print(f"📤 Sending Telegram message chunk {i+1}/{len(message_chunks)}")
+                # Run the async function
+                asyncio.run(send_telegram_message(
+                    telegram_config['api_key'],
+                    telegram_config['user_ids'],
+                    message
+                ))
+                # Small delay between messages to avoid rate limiting
+                if i < len(message_chunks) - 1:
+                    import time
+                    time.sleep(1)
         except Exception as e:
             print(f"❌ Error sending Telegram notifications: {e}")
 
@@ -611,16 +737,23 @@ def send_scan_telegram_notifications(scan_results: List[Dict]) -> None:
     
     if telegram_config:
         try:
-            message = format_scan_telegram_message(scan_results)
+            message_chunks = format_scan_telegram_message(scan_results)
             
             # Only send if there are actual buy/sell signals
-            if message:
-                # Run the async function
-                asyncio.run(send_telegram_message(
-                    telegram_config['api_key'],
-                    telegram_config['user_ids'],
-                    message
-                ))
+            if message_chunks:
+                # Send each message chunk
+                for i, message in enumerate(message_chunks):
+                    print(f"📤 Sending scan message chunk {i+1}/{len(message_chunks)}")
+                    # Run the async function
+                    asyncio.run(send_telegram_message(
+                        telegram_config['api_key'],
+                        telegram_config['user_ids'],
+                        message
+                    ))
+                    # Small delay between messages to avoid rate limiting
+                    if i < len(message_chunks) - 1:
+                        import time
+                        time.sleep(1)
                 print("📱 Market scan signals sent to Telegram")
             else:
                 print("🔍 No buy/sell signals found in market scan")
@@ -729,14 +862,13 @@ def main():
     print("  HOLD       - RSI between 30-70 with no strong MACD signals")
     print("  ⚡          - Enhanced signal with MACD confirmation")
     print("\nMACD POSITIONS:")
-    print("  Golden Cross (Bullish)     - MACD > Signal Line, both above zero")
-    print("  Dead Cross (Bearish)       - MACD < Signal Line, both below zero")
+    print("  Golden Cross               - MACD > Signal Line, both above zero")
+    print("  Dead Cross                 - MACD < Signal Line, both below zero")
     print("  Up Trend                   - MACD & Signal above zero line")
     print("  Down Trend                 - MACD & Signal below zero line")
     print("\nOTHER:")
     print(f"  Buy/30d, Sell/30d - Number of signals in the last {config.MAX_RECENT_DAYS} days")
     print("  Calendar - Shows upcoming ex-dividend or earnings events")
-    print("\n⚠️  Disclaimer: This is for educational purposes only. Not financial advice.")
 
 
 if __name__ == "__main__":
