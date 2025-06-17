@@ -269,12 +269,18 @@ class RSISignalGenerator:
         data.loc[strong_bearish & (data['MACD_Histogram'] < data['MACD_Histogram'].shift(1)), 'Signal'] = 'STRONG_SELL'
         
         # BUY when MACD is above signal line (uptrend continuation)
+        # Exclude Up Trend and Down Trend conditions - keep them as HOLD
         uptrend = (data['MACD'] > data['MACD_Signal']) & (data['Signal'] == 'HOLD')
-        data.loc[uptrend, 'Signal'] = 'BUY'
+        # Only generate BUY signal for Golden Cross conditions (both above zero)
+        uptrend_buy = uptrend & (data['MACD'] > 0) & (data['MACD_Signal'] > 0)
+        data.loc[uptrend_buy, 'Signal'] = 'BUY'
         
         # SELL when MACD is below signal line (downtrend continuation)
+        # Exclude Up Trend and Down Trend conditions - keep them as HOLD
         downtrend = (data['MACD'] < data['MACD_Signal']) & (data['Signal'] == 'HOLD')
-        data.loc[downtrend, 'Signal'] = 'SELL'
+        # Only generate SELL signal for Dead Cross conditions (both below zero)
+        downtrend_sell = downtrend & (data['MACD'] < 0) & (data['MACD_Signal'] < 0)
+        data.loc[downtrend_sell, 'Signal'] = 'SELL'
         
         # Check calendar events for additional SELL signal
         calendar_events = {'ex_date_tomorrow': False, 'earnings_tomorrow': False}
