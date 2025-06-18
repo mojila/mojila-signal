@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  mojila-signal:
+    build: .
+    container_name: mojila-signal-app
+    volumes:
+      # Mount database and config files to persist data
+      - ./signals.db:/app/signals.db
+      - ./my_portfolio.txt:/app/my_portfolio.txt:ro
+      - ./scan_list.txt:/app/scan_list.txt:ro
+      - ./telegram_config.json:/app/telegram_config.json:ro
+    environment:
+      - PYTHONPATH=/app
+      - TZ=UTC
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "test_installation.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Web interface service
+  mojila-web:
+    build: .
+    container_name: mojila-signal-web
+    command: ["python", "app.py"]
+    volumes:
+      - ./signals.db:/app/signals.db
+      - ./my_portfolio.txt:/app/my_portfolio.txt:ro
+      - ./scan_list.txt:/app/scan_list.txt:ro
+    environment:
+      - PYTHONPATH=/app
+      - FLASK_ENV=production
+      - TZ=UTC
+    ports:
+      - "8080:5000"
+    restart: unless-stopped
+    depends_on:
+      - mojila-signal
+    profiles:
+      - web
+
+volumes:
+  signal_data:
+    driver: local

@@ -46,11 +46,51 @@ This feature helps traders avoid potential price drops or volatility around thes
 
 ## Installation
 
-1. Clone or download this repository
-2. Install required dependencies:
+### Option 1: Docker (Recommended)
 
+1. Clone this repository:
 ```bash
-pip install -r requirements.txt
+git clone <repository-url>
+cd mojila-signal
+```
+
+2. Build and run with Docker:
+```bash
+# Quick start
+docker-compose up --build
+
+# Or use the build script
+./docker-build.sh
+```
+
+3. For web interface:
+```bash
+docker-compose --profile web up --build
+```
+
+See [README-Docker.md](README-Docker.md) for detailed Docker instructions.
+
+### Option 2: Local Installation
+
+1. Clone this repository:
+```bash
+git clone <repository-url>
+cd mojila-signal
+```
+
+2. Run the setup script:
+```bash
+bash setup.sh
+```
+
+3. Activate the virtual environment:
+```bash
+source venv/bin/activate
+```
+
+4. Test the installation:
+```bash
+python test_installation.py
 ```
 
 ## Usage

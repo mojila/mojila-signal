@@ -18,6 +18,7 @@ import json
 import asyncio
 from telegram import Bot
 from telegram.error import TelegramError
+from database import SignalDatabase
 
 
 class RSISignalGenerator:
@@ -28,7 +29,7 @@ class RSISignalGenerator:
     RSI above 70 indicates overbought condition (potential sell signal)
     """
     
-    def __init__(self, rsi_period: int = None, oversold_threshold: float = None, overbought_threshold: float = None, check_calendar_events: bool = True):
+    def __init__(self, rsi_period: int = None, oversold_threshold: float = None, overbought_threshold: float = None, check_calendar_events: bool = True, db_path: str = "signals.db"):
         """
         Initialize the RSI Signal Generator.
         
@@ -37,11 +38,13 @@ class RSISignalGenerator:
             oversold_threshold (float): RSI threshold for oversold condition (default: from config)
             overbought_threshold (float): RSI threshold for overbought condition (default: from config)
             check_calendar_events (bool): Whether to check for ex-dividend and earnings dates (default: True)
+            db_path (str): Path to SQLite database file (default: "signals.db")
         """
         self.rsi_period = rsi_period or config.RSI_PERIOD
         self.oversold_threshold = oversold_threshold or config.OVERSOLD_THRESHOLD
         self.overbought_threshold = overbought_threshold or config.OVERBOUGHT_THRESHOLD
         self.check_calendar_events = check_calendar_events
+        self.db = SignalDatabase(db_path)
     
     def calculate_rsi(self, prices: pd.Series) -> pd.Series:
         """
@@ -115,7 +118,7 @@ class RSISignalGenerator:
     
     def get_stock_data(self, symbol: str, period: str = "1y") -> pd.DataFrame:
         """
-        Fetch stock data from Yahoo Finance.
+        Fetch stock data from Yahoo Finance with improved error handling.
         
         Args:
             symbol (str): Stock symbol (e.g., 'AAPL', 'MSFT')
@@ -124,22 +127,56 @@ class RSISignalGenerator:
         Returns:
             pd.DataFrame: Stock data with OHLCV information
         """
+        # Try different approaches to fetch data
+        approaches = [
+            # Approach 1: Standard ticker.history()
+            lambda: yf.Ticker(symbol).history(period=period, timeout=config.REQUEST_TIMEOUT),
+            # Approach 2: Using yf.download()
+            lambda: yf.download(symbol, period=period, progress=False, timeout=config.REQUEST_TIMEOUT),
+            # Approach 3: Ticker with session and headers
+            lambda: self._get_data_with_session(symbol, period),
+        ]
+        
         for attempt in range(config.RETRY_ATTEMPTS):
-            try:
-                stock = yf.Ticker(symbol)
-                data = stock.history(period=period, timeout=config.REQUEST_TIMEOUT)
-                if not data.empty:
-                    return data
-                else:
-                    print(f"No data returned for {symbol}")
-                    return pd.DataFrame()
-            except Exception as e:
-                if attempt < config.RETRY_ATTEMPTS - 1:
-                    print(f"Attempt {attempt + 1} failed for {symbol}: {e}. Retrying...")
-                    time.sleep(1)  # Wait 1 second before retry
-                else:
-                    print(f"Error fetching data for {symbol} after {config.RETRY_ATTEMPTS} attempts: {e}")
-                    return pd.DataFrame()
+            for approach_idx, approach in enumerate(approaches):
+                try:
+                    print(f"Attempt {attempt + 1}, approach {approach_idx + 1} for {symbol}")
+                    data = approach()
+                    
+                    if data is not None and not data.empty:
+                        print(f"✓ Successfully fetched data for {symbol} (shape: {data.shape})")
+                        return data
+                    else:
+                        print(f"No data returned for {symbol} with approach {approach_idx + 1}")
+                        
+                except Exception as e:
+                    print(f"Approach {approach_idx + 1} failed for {symbol}: {e}")
+                    continue
+            
+            # Wait before next attempt
+            if attempt < config.RETRY_ATTEMPTS - 1:
+                wait_time = (attempt + 1) * 2  # Exponential backoff
+                print(f"Waiting {wait_time} seconds before retry...")
+                time.sleep(wait_time)
+        
+        print(f"✗ All attempts failed for {symbol}")
+        return pd.DataFrame()
+    
+    def _get_data_with_session(self, symbol: str, period: str) -> pd.DataFrame:
+        """
+        Alternative method to fetch data using session with custom headers.
+        """
+        import requests
+        
+        # Create session with custom headers
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        })
+        
+        # Create ticker with session
+        stock = yf.Ticker(symbol, session=session)
+        return stock.history(period=period, timeout=config.REQUEST_TIMEOUT)
     
     def get_calendar_events(self, symbol: str) -> Dict[str, bool]:
         """
@@ -192,33 +229,7 @@ class RSISignalGenerator:
              'earnings_tomorrow': earnings_tomorrow
          }
     
-    def get_stock_data(self, symbol: str, period: str = "1y") -> pd.DataFrame:
-        """
-        Fetch stock data from Yahoo Finance.
-        
-        Args:
-            symbol (str): Stock symbol (e.g., 'AAPL', 'MSFT')
-            period (str): Time period for data (default: '1y')
-            
-        Returns:
-            pd.DataFrame: Stock data with OHLCV information
-        """
-        for attempt in range(config.RETRY_ATTEMPTS):
-            try:
-                stock = yf.Ticker(symbol)
-                data = stock.history(period=period, timeout=config.REQUEST_TIMEOUT)
-                if not data.empty:
-                    return data
-                else:
-                    print(f"No data returned for {symbol}")
-                    return pd.DataFrame()
-            except Exception as e:
-                if attempt < config.RETRY_ATTEMPTS - 1:
-                    print(f"Attempt {attempt + 1} failed for {symbol}: {e}. Retrying...")
-                    time.sleep(1)  # Wait 1 second before retry
-                else:
-                    print(f"Error fetching data for {symbol} after {config.RETRY_ATTEMPTS} attempts: {e}")
-                    return pd.DataFrame()
+
     
     def generate_signals(self, symbol: str, period: str = "1y") -> Dict:
         """
@@ -348,6 +359,75 @@ class RSISignalGenerator:
             "data": data.tail(config.MAX_DISPLAY_ROWS).to_dict('records')
         }
     
+    def scan_market(self, symbols: List[str]) -> Tuple[List[str], List[str]]:
+        """
+        Scans the market for buy and sell signals based on RSI.
+        Checks for existing signals in database first, generates new ones if needed.
+        
+        Args:
+            symbols (List[str]): List of stock symbols to scan
+            
+        Returns:
+            Tuple[List[str], List[str]]: Lists of buy signals and sell signals
+        """
+        today_date = datetime.now().strftime('%Y-%m-%d')
+        
+        # Check if signals for today already exist
+        existing_signals = self.db.get_signals_by_date(today_date)
+        
+        if existing_signals:
+            print(f"Found existing signals for {today_date}. Showing existing data.")
+            buy_signals = [signal['symbol'] for signal in existing_signals if signal.get('currentSignal') in ['BUY', 'STRONG_BUY']]
+            sell_signals = [signal['symbol'] for signal in existing_signals if signal.get('currentSignal') in ['SELL', 'STRONG_SELL']]
+            return buy_signals, sell_signals
+        
+        print(f"No existing signals found for {today_date}. Generating new signals...")
+        
+        buy_signals = []
+        sell_signals = []
+        
+        for symbol in symbols:
+            try:
+                signal_data = self.generate_signals(symbol)
+                if 'error' not in signal_data:
+                    current_signal = signal_data['currentSignal']
+                    
+                    if current_signal in ['BUY', 'STRONG_BUY']:
+                        buy_signals.append(symbol)
+                    elif current_signal in ['SELL', 'STRONG_SELL']:
+                        sell_signals.append(symbol)
+                else:
+                    print(f"No data available for {symbol}")
+                    
+            except Exception as e:
+                print(f"Error processing {symbol}: {e}")
+                continue
+        
+        # Save new signals to database
+        if buy_signals or sell_signals:
+            # We need to get the full signal data for each symbol to save
+            for symbol in buy_signals:
+                try:
+                    signal_data = self.generate_signals(symbol)
+                    if 'error' not in signal_data:
+                        self.db.save_signal(symbol, signal_data, today_date)
+                except Exception as e:
+                    print(f"Error saving buy signal for {symbol}: {e}")
+            
+            for symbol in sell_signals:
+                try:
+                    signal_data = self.generate_signals(symbol)
+                    if 'error' not in signal_data:
+                        self.db.save_signal(symbol, signal_data, today_date)
+                except Exception as e:
+                    print(f"Error saving sell signal for {symbol}: {e}")
+            
+            print(f"Saved {len(buy_signals)} buy signals and {len(sell_signals)} sell signals to database.")
+        else:
+            print("No signals generated for today.")
+                
+        return buy_signals, sell_signals
+
     def analyze_multiple_stocks(self, symbols: List[str], period: str = "1y") -> List[Dict]:
         """
         Analyze multiple stocks and return signals for each.
