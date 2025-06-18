@@ -95,7 +95,45 @@ python test_installation.py
 
 ## Usage
 
-### Basic Usage
+### Automated Scheduler (Recommended)
+
+For continuous signal generation, use the automated scheduler:
+
+```bash
+# Install scheduler dependencies
+pip install schedule
+
+# Run single scan
+python scheduler.py --once
+
+# Start continuous hourly scans
+python scheduler.py
+
+# Docker deployment
+docker-compose up --build
+```
+
+See [README-Scheduler.md](README-Scheduler.md) for detailed scheduler documentation.
+
+### Docker Deployment (Recommended)
+
+The easiest way to run both the scheduler and web interface:
+
+```bash
+# Start both scheduler and web app services
+docker-compose up -d
+
+# Access the web interface
+open http://localhost:5000
+
+# View logs
+docker-compose logs -f mojila-signal
+
+# Stop the services
+docker-compose down
+```
+
+### Manual Usage
 
 Run the main script to analyze popular US stocks:
 

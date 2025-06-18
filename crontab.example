@@ -1,0 +1,30 @@
+# Mojila Signal - Cron Job Configuration
+# 
+# This file contains example cron job entries for running the signal scheduler.
+# Copy the desired entries to your crontab using: crontab -e
+#
+# Make sure to:
+# 1. Update the paths to match your installation directory
+# 2. Ensure the virtual environment is activated
+# 3. Set proper permissions for the script files
+
+# Run signal scan every hour at the top of the hour
+0 * * * * cd /path/to/mojila-signal && source venv/bin/activate && python scheduler.py --once >> /var/log/mojila-signal.log 2>&1
+
+# Alternative: Run every 2 hours
+# 0 */2 * * * cd /path/to/mojila-signal && source venv/bin/activate && python scheduler.py --once >> /var/log/mojila-signal.log 2>&1
+
+# Alternative: Run only during market hours (9 AM to 4 PM, Monday to Friday)
+# 0 9-16 * * 1-5 cd /path/to/mojila-signal && source venv/bin/activate && python scheduler.py --once >> /var/log/mojila-signal.log 2>&1
+
+# Database cleanup - run daily at 2 AM
+0 2 * * * cd /path/to/mojila-signal && source venv/bin/activate && python -c "from scheduler import SignalScheduler; SignalScheduler().cleanup_old_signals()" >> /var/log/mojila-signal.log 2>&1
+
+# Health check - run every 6 hours
+0 */6 * * * cd /path/to/mojila-signal && source venv/bin/activate && python -c "from scheduler import SignalScheduler; SignalScheduler().health_check()" >> /var/log/mojila-signal.log 2>&1
+
+# Log rotation (optional) - rotate logs weekly
+0 0 * * 0 cd /path/to/mojila-signal && mv scheduler.log scheduler.log.old && touch scheduler.log
+
+# Example for Docker deployment:
+# 0 * * * * docker exec mojila-signal-app python scheduler.py --once >> /var/log/mojila-signal-docker.log 2>&1

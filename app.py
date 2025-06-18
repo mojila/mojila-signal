@@ -13,15 +13,17 @@ import sys
 from datetime import datetime
 from typing import Dict, List, Optional
 
-# Import our existing signal generator
+# Import our existing signal generator and database
 from main import RSISignalGenerator, load_portfolio_stocks, load_scan_list
+from database import SignalDatabase
 import config
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)  # Enable CORS for all routes
 
-# Initialize the signal generator
+# Initialize the signal generator and database
 signal_generator = RSISignalGenerator()
+db = SignalDatabase()
 
 @app.route('/')
 def index():
@@ -54,12 +56,22 @@ def get_config():
 def get_stock_signal(symbol: str):
     """Get signal analysis for a single stock."""
     try:
+        symbol = symbol.upper()
         period = request.args.get('period', config.DEFAULT_PERIOD)
-        result = signal_generator.generate_signals(symbol.upper(), period)
+        
+        # Try to load from database first
+        cached_signal = db.get_signal(symbol)
+        if cached_signal:
+            cached_signal['source'] = 'database'
+            return jsonify(cached_signal)
+        
+        # If not in database, generate new signal
+        result = signal_generator.generate_signals(symbol, period)
         
         if 'error' in result:
             return jsonify({'error': result['error']}), 400
         
+        result['source'] = 'generated'
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -71,14 +83,27 @@ def get_portfolio_signals():
         period = request.args.get('period', config.DEFAULT_PERIOD)
         stocks = load_portfolio_stocks()
         
-        results = []
-        for symbol in stocks:
+        # Try to load from database first
+        portfolio_data = db.get_portfolio_signals(stocks)
+        results = portfolio_data['cached']
+        missing_symbols = portfolio_data['missing']
+        
+        # Generate signals for missing symbols
+        for symbol in missing_symbols:
             result = signal_generator.generate_signals(symbol, period)
-            results.append(result)
+            if 'error' not in result:
+                result['source'] = 'generated'
+                results.append(result)
+        
+        # Mark cached results
+        for result in portfolio_data['cached']:
+            result['source'] = 'database'
         
         return jsonify({
             'stocks': results,
             'total_count': len(results),
+            'cached_count': len(portfolio_data['cached']),
+            'generated_count': len(missing_symbols),
             'timestamp': datetime.now().isoformat(),
             'period': period
         })
@@ -86,36 +111,36 @@ def get_portfolio_signals():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/scan')
-def get_market_scan():
-    """Get market scan results."""
+def scan_market():
+    """Scan the market for signals."""
     try:
         period = request.args.get('period', config.DEFAULT_PERIOD)
-        portfolio_stocks = load_portfolio_stocks()
-        scan_stocks = load_scan_list(exclude_stocks=portfolio_stocks)
+        limit = int(request.args.get('limit', 50))
         
-        if not scan_stocks:
-            return jsonify({
-                'stocks': [],
-                'total_count': 0,
-                'message': 'No scan list found or scan list is empty',
-                'timestamp': datetime.now().isoformat()
-            })
+        scan_list = load_scan_list()[:limit]
         
-        results = []
-        for symbol in scan_stocks:
+        # Try to load from database first
+        scan_data = db.get_portfolio_signals(scan_list)
+        results = scan_data['cached']
+        missing_symbols = scan_data['missing']
+        
+        # Generate signals for missing symbols
+        for symbol in missing_symbols:
             result = signal_generator.generate_signals(symbol, period)
-            results.append(result)
+            if 'error' not in result:
+                result['source'] = 'generated'
+                results.append(result)
         
-        # Filter for only BUY/SELL signals
-        filtered_results = [
-            r for r in results 
-            if 'error' not in r and r['currentSignal'] in ['BUY', 'SELL', 'STRONG_BUY', 'STRONG_SELL']
-        ]
+        # Mark cached results
+        for result in scan_data['cached']:
+            result['source'] = 'database'
         
         return jsonify({
-            'stocks': filtered_results,
-            'total_scanned': len(results),
-            'signals_found': len(filtered_results),
+            'stocks': results,
+            'total_count': len(results),
+            'cached_count': len(scan_data['cached']),
+            'generated_count': len(missing_symbols),
+            'scanned_symbols': len(scan_list),
             'timestamp': datetime.now().isoformat(),
             'period': period
         })
@@ -136,15 +161,33 @@ def analyze_custom_stocks():
         if not isinstance(symbols, list) or not symbols:
             return jsonify({'error': 'Symbols must be a non-empty list'}), 400
         
-        results = []
+        # Clean and normalize symbols
+        clean_symbols = []
         for symbol in symbols:
             if isinstance(symbol, str) and symbol.strip():
-                result = signal_generator.generate_signals(symbol.upper().strip(), period)
+                clean_symbols.append(symbol.upper().strip())
+        
+        # Try to load from database first
+        analyze_data = db.get_portfolio_signals(clean_symbols)
+        results = analyze_data['cached']
+        missing_symbols = analyze_data['missing']
+        
+        # Generate signals for missing symbols
+        for symbol in missing_symbols:
+            result = signal_generator.generate_signals(symbol, period)
+            if 'error' not in result:
+                result['source'] = 'generated'
                 results.append(result)
+        
+        # Mark cached results
+        for result in analyze_data['cached']:
+            result['source'] = 'database'
         
         return jsonify({
             'stocks': results,
             'total_count': len(results),
+            'cached_count': len(analyze_data['cached']),
+            'generated_count': len(missing_symbols),
             'timestamp': datetime.now().isoformat(),
             'period': period
         })
@@ -169,17 +212,30 @@ def get_sector_analysis(sector_name: str):
         if sector_key not in sector_stocks:
             return jsonify({'error': f'Unknown sector: {sector_name}'}), 400
         
-        stocks = sector_stocks[sector_key]
-        results = []
+        stocks = sector_stocks[sector_key][:10]  # Limit to 10 stocks per sector
         
-        for symbol in stocks[:10]:  # Limit to 10 stocks per sector
+        # Try to load from database first
+        sector_data = db.get_portfolio_signals(stocks)
+        results = sector_data['cached']
+        missing_symbols = sector_data['missing']
+        
+        # Generate signals for missing symbols
+        for symbol in missing_symbols:
             result = signal_generator.generate_signals(symbol, period)
-            results.append(result)
+            if 'error' not in result:
+                result['source'] = 'generated'
+                results.append(result)
+        
+        # Mark cached results
+        for result in sector_data['cached']:
+            result['source'] = 'database'
         
         return jsonify({
             'sector': sector_name.title(),
             'stocks': results,
             'total_count': len(results),
+            'cached_count': len(sector_data['cached']),
+            'generated_count': len(missing_symbols),
             'timestamp': datetime.now().isoformat(),
             'period': period
         })
@@ -193,8 +249,13 @@ def get_summary():
         period = request.args.get('period', config.DEFAULT_PERIOD)
         stocks = load_portfolio_stocks()
         
-        results = []
-        for symbol in stocks:
+        # Try to load from database first
+        portfolio_data = db.get_portfolio_signals(stocks)
+        results = portfolio_data['cached']
+        missing_symbols = portfolio_data['missing']
+        
+        # Generate signals for missing symbols
+        for symbol in missing_symbols:
             result = signal_generator.generate_signals(symbol, period)
             if 'error' not in result:
                 results.append(result)
@@ -213,6 +274,8 @@ def get_summary():
             'sell_signals': sell_signals,
             'hold_signals': hold_signals,
             'average_rsi': round(avg_rsi, 2),
+            'cached_count': len(portfolio_data['cached']),
+            'generated_count': len(missing_symbols),
             'timestamp': datetime.now().isoformat(),
             'period': period
         })
@@ -235,7 +298,7 @@ if __name__ == '__main__':
     os.makedirs('static', exist_ok=True)
     
     # Get configuration from environment variables
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 5001))
     debug_mode = os.environ.get('FLASK_ENV', 'production') == 'development'
     
     print("🚀 Starting Mojila Signal Web Application...")

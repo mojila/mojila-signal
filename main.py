@@ -385,12 +385,14 @@ class RSISignalGenerator:
         
         buy_signals = []
         sell_signals = []
-        
+        all_signals = {}  # Store all signal data for saving
+
         for symbol in symbols:
             try:
                 signal_data = self.generate_signals(symbol)
                 if 'error' not in signal_data:
                     current_signal = signal_data['currentSignal']
+                    all_signals[symbol] = signal_data  # Store signal data for all symbols
                     
                     if current_signal in ['BUY', 'STRONG_BUY']:
                         buy_signals.append(symbol)
@@ -402,27 +404,18 @@ class RSISignalGenerator:
             except Exception as e:
                 print(f"Error processing {symbol}: {e}")
                 continue
+
+        # Save ALL signals to database (including HOLD signals)
+        saved_count = 0
+        for symbol, signal_data in all_signals.items():
+            try:
+                self.db.save_signal(symbol, signal_data, today_date)
+                saved_count += 1
+            except Exception as e:
+                print(f"Error saving signal for {symbol}: {e}")
         
-        # Save new signals to database
-        if buy_signals or sell_signals:
-            # We need to get the full signal data for each symbol to save
-            for symbol in buy_signals:
-                try:
-                    signal_data = self.generate_signals(symbol)
-                    if 'error' not in signal_data:
-                        self.db.save_signal(symbol, signal_data, today_date)
-                except Exception as e:
-                    print(f"Error saving buy signal for {symbol}: {e}")
-            
-            for symbol in sell_signals:
-                try:
-                    signal_data = self.generate_signals(symbol)
-                    if 'error' not in signal_data:
-                        self.db.save_signal(symbol, signal_data, today_date)
-                except Exception as e:
-                    print(f"Error saving sell signal for {symbol}: {e}")
-            
-            print(f"Saved {len(buy_signals)} buy signals and {len(sell_signals)} sell signals to database.")
+        if saved_count > 0:
+            print(f"Saved {saved_count} signals to database ({len(buy_signals)} buy, {len(sell_signals)} sell, {saved_count - len(buy_signals) - len(sell_signals)} hold).")
         else:
             print("No signals generated for today.")
                 

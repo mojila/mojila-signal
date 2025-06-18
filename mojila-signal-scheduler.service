@@ -1,0 +1,28 @@
+[Unit]
+Description=Mojila Signal Scheduler Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/mojila-signal
+Environment=PATH=/opt/mojila-signal/venv/bin
+Environment=PYTHONPATH=/opt/mojila-signal
+ExecStart=/opt/mojila-signal/venv/bin/python /opt/mojila-signal/scheduler.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mojila-signal-scheduler
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/mojila-signal
+
+[Install]
+WantedBy=multi-user.target

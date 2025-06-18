@@ -16,8 +16,24 @@ This guide explains how to build and run the Mojila Signal project using Docker 
 git clone <repository-url>
 cd mojila-signal
 
-# Build and start the application
-docker-compose up --build
+# Create required configuration files
+cp my_portfolio.txt.template my_portfolio.txt
+cp telegram_config.json.template telegram_config.json
+
+# Edit configuration files with your settings
+# ... edit my_portfolio.txt and telegram_config.json ...
+
+# Start both scheduler and web app
+docker-compose up -d
+
+# Access the web interface
+open http://localhost:5000
+
+# View logs
+docker-compose logs -f
+
+# Stop the services
+docker-compose down
 ```
 
 ### 2. Run with Web Interface
@@ -85,8 +101,11 @@ docker run -d \
 ## Docker Services
 
 ### Main Service (mojila-signal)
-- **Purpose**: Runs the main signal generation logic
-- **Port**: 5000 (if web interface is enabled)
+- **Purpose**: Runs both the automated signal scheduler and web application
+- **Image**: Built from local Dockerfile
+- **Ports**: 5000:5000 (Web interface)
+- **Restart Policy**: unless-stopped
+- **Health Check**: Validates web application health every 2 minutes
 - **Command**: `python main.py`
 - **Volumes**: Database and config files
 

@@ -12,6 +12,7 @@ ENV PYTHONPATH=/app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -35,5 +36,8 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python test_installation.py || exit 1
 
-# Default command
-CMD ["python", "app.py"]
+# Copy and make executable the startup script
+COPY start-services.sh .
+
+# Default command - run both scheduler and web app
+CMD ["./start-services.sh"]
